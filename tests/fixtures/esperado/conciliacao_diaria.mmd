@@ -1,0 +1,52 @@
+flowchart TD
+  nea4b9872(["Início: Conciliação Diária"])
+  nf29bc91b["Excel: abrir planilha, Excel: ler intervalo"]
+  subgraph n12671778["Preparar ambiente"]
+  nb9f85daa["Navegador: abrir"]
+  end
+  n39a89dd1{"Loop: para cada linha de dtExtrato"}
+  n4a8ff099{"Se: linha está conciliada"}
+  n252bc067["Excel advanced:SetCell"]
+  n83c6cea3{"Senão se: valor divergente"}
+  n21440dba["E-mail: enviar"]
+  n0e8c4304["Excel advanced:SetCell"]
+  nb591abbb["Browser:Download"]
+  n6f11328a["E-mail: enviar"]
+  nb6485633["Navegador: fechar"]
+  subgraph n07cb9cdf["Bot: Bots/Comum/EnviarRelatorio"]
+  n5573e39b["E-mail: enviar"]
+  na50126cc[["recursão: Bots/Financeiro/ConciliacaoDiaria"]]
+  end
+  n6b1f5330[/"Bots/Comum/Auditoria — não encontrado no export"/]
+  na625406f[/"alvo dinâmico: Bots/Comum/$sBotDinamico$"/]
+  nbb65d5af["Encerrar e notificar"]
+  n70493db3(["Fim"])
+  nf29bc91b --> nb9f85daa
+  n4a8ff099 -->|sim| n252bc067
+  n4a8ff099 -->|não| n83c6cea3
+  n83c6cea3 -->|sim| n21440dba
+  n83c6cea3 -->|não| n0e8c4304
+  nb591abbb -.->|erro| n6f11328a
+  nb591abbb --> nb6485633
+  n6f11328a --> nb6485633
+  n252bc067 --> nb591abbb
+  n21440dba --> nb591abbb
+  n0e8c4304 --> nb591abbb
+  n39a89dd1 -->|iteração| n4a8ff099
+  nb6485633 -.->|próxima| n39a89dd1
+  nb9f85daa --> n39a89dd1
+  n5573e39b --> na50126cc
+  n39a89dd1 -->|fim| n5573e39b
+  na50126cc --> n6b1f5330
+  n6b1f5330 --> na625406f
+  na625406f --> nbb65d5af
+  nea4b9872 --> nf29bc91b
+  nbb65d5af --> n70493db3
+  classDef acoes stroke:#4c6ef5,stroke-width:1px
+  class n0e8c4304,n21440dba,n252bc067,n5573e39b,n6f11328a,nb591abbb,nb6485633,nb9f85daa,nbb65d5af,nf29bc91b acoes
+  classDef controle stroke:#b26a00,stroke-width:2px
+  class n39a89dd1,n4a8ff099,n83c6cea3 controle
+  classDef limite stroke:#862e9c,stroke-width:2px,stroke-dasharray:2 2
+  class na50126cc limite
+  classDef nao_resolvido stroke:#e03131,stroke-width:2px,stroke-dasharray:4 3
+  class n6b1f5330,na625406f nao_resolvido

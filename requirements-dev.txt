@@ -1,0 +1,4 @@
+# Dependências de desenvolvimento. Quem só gera diagramas não instala nada:
+# o script roda com a biblioteca padrão do Python 3.14. Ver §6.1 da spec.
+pytest>=8.0
+ruff>=0.6

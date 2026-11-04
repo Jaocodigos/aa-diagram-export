@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aa-diagram-export"
+version = "0.1.0.dev0"
+description = "Gera diagramas Mermaid a partir de um export de bots do Automation Anywhere A360"
+readme = "README.md"
+# O alvo do projeto é o 3.14, que é a versão do venv do repo. O piso é 3.11
+# porque é de lá que vêm tomllib e StrEnum; deixar o piso mais baixo que o
+# alvo não custa nada e permite rodar os testes em outras máquinas.
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Com isto os testes rodam sem instalar o pacote: `pytest` e pronto.
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
