@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | Projeto | `aa-diagram-export` |
-| Versão desta spec | 0.4 (MVP parcial) |
-| Data | 2026-11-04 |
-| Status | Pipeline implementado e testado, menos o `parser.py`. As premissas da §11 seguem pendentes de validação contra um export real. |
+| Versão desta spec | 0.5 (MVP completo) |
+| Data | 2026-11-05 |
+| Status | Pipeline completo, validado contra um export real. O formato do A360 está documentado na §11. |
 
 ---
 
@@ -71,6 +71,7 @@ O `index.md` traz o grafo de chamadas (`flowchart LR`, um nó por bot, uma arest
 | Configuração | `dicionario.toml` na raiz, único arquivo que o time edita |
 | Execução | Linha de comando; `.bat` clicável e CI ficam fora do MVP |
 | Dependências | Execução: nenhuma por ora, cada nova com razão registrada. Desenvolvimento: `pytest`, `ruff` |
+| Orçamento de arestas | Diagrama acima de 480 arestas é refeito com um nível a menos de expansão (§8.1) |
 
 ## 6. Arquitetura
 
@@ -232,17 +233,36 @@ Rótulo sempre entre aspas duplas. `"` vira `#quot;`, quebra de linha vira `<br/
 
 ## 8. Expansão de subtarefas
 
-Ao encontrar um `Run Task`:
+Ao encontrar um `Run Task`, na ordem:
 
-1. Resolve o caminho do bot chamado contra o inventário do export. Caminho vem de parâmetro do comando e pode ser relativo ou absoluto no repositório do Control Room — a normalização é um dos pontos a validar (§11).
-2. Não encontrado → nó não resolvido, pendência registrada, segue.
-3. Já presente na cadeia de chamadas atual → nó de ciclo, não expande.
-4. Profundidade atual ≥ `--max-depth` (padrão 3) → nó de limite, não expande.
+1. Alvo dinâmico (vem de variável, com `$` no caminho) → nó não resolvido com nota de alvo dinâmico. Não dá pra resolver estaticamente.
+2. Alvo já presente na cadeia de chamadas atual → nó de ciclo, não expande.
+3. Não encontrado no inventário → nó não resolvido, pendência registrada, segue.
+4. Profundidade já aplicada ≥ `--max-depth` → nó de limite, não expande.
 5. Caso contrário → expande o corpo dentro de um `subgraph`.
 
-O caminho dinâmico (`Run Task` cujo alvo vem de variável) não é resolvível estaticamente: vira nó não resolvido com nota de que o alvo é dinâmico.
+A comparação de caminhos é o ponto delicado, porque o export escreve o mesmo bot de duas formas (§11.2). Ela mora inteira em `paths.normalize`.
 
-A expansão inline não impede o bot chamado de ter também o seu próprio `.md`: todo bot do export ganha um arquivo, chamado por alguém ou não.
+A expansão inline não impede o bot chamado de ter o seu próprio `.md`: todo bot do export ganha um arquivo, chamado por alguém ou não.
+
+### 8.1 Orçamento de arestas
+
+**O Mermaid recusa diagrama com mais de 500 arestas.** `maxEdges` é configuração segura, que não pode ser elevada de dentro do arquivo, e o GitHub renderiza com o padrão. Passar de 500 não degrada o diagrama: ele simplesmente não aparece.
+
+Isso não é hipotético. No primeiro export real processado, o bot orquestrador do processo dá:
+
+| Profundidade | Arestas |
+|---|---|
+| 0 | 76 |
+| 1 | 376 |
+| 2 | 592 — não renderiza |
+| 3 | 592 — não renderiza |
+
+Ou seja, a profundidade padrão 3 produziria, justamente para o bot mais importante do export, um arquivo que ninguém consegue ver.
+
+Por isso o gerador trata profundidade como teto, não como ordem: desenha, conta as arestas e, passando de 480, refaz com um nível a menos até caber. A página do bot diz até onde expandiu e por quê, e o `index.md` lista os bots reduzidos. Nada se perde, porque cada bot chamado tem o diagrama próprio — só deixa de estar tudo no mesmo desenho.
+
+Um bot que sozinho passe do limite, já sem expansão nenhuma, sai mesmo assim, com um aviso na página de que pode não renderizar. Entregar o diagrama com aviso é melhor que não entregar.
 
 ## 9. Rótulos e dado sensível
 
@@ -282,23 +302,24 @@ profundidade_maxima = 3
 
 [estilo]
 # contorno colorido com preenchimento neutro: legível nos temas claro e escuro
-controle       = "stroke:#b26a00"
-acoes          = "stroke:#4c6ef5"
-chamada        = "stroke:#2f9e44"
-nao_resolvido  = "stroke:#e03131,stroke-dasharray:4 3"
+controle      = "stroke:#b26a00,stroke-width:2px"
+acoes         = "stroke:#4c6ef5,stroke-width:1px"
+chamada       = "stroke:#2f9e44,stroke-width:2px"
+nao_resolvido = "stroke:#e03131,stroke-width:2px,stroke-dasharray:4 3"
+limite        = "stroke:#862e9c,stroke-width:2px,stroke-dasharray:2 2"
 
 [comandos_amigaveis]
 # "Pacote:Comando" do A360 = rótulo que aparece no diagrama
-"Excel advanced:Open"             = "Excel: abrir planilha"
-"Excel advanced:GetMultipleCells" = "Excel: ler intervalo"
-"Browser:Launch"                  = "Navegador: abrir"
-
-[estruturas_de_controle]
-# pacotes tratados como estrutura; o resto colapsa em bloco linear
-pacotes = ["If", "Loop", "ErrorHandler", "Step", "TaskBot"]
+"Database:connect"       = "Banco: conectar"
+"Excel:OpenSpreadsheet"  = "Excel: abrir planilha"
+"String:assign"          = "Texto: atribuir"
 ```
 
-Comando sem entrada em `comandos_amigaveis` cai para o nome cru do A360 e é listado no relatório do `index.md`, para o time ir preenchendo o dicionário conforme aparecem.
+Comando sem entrada em `comandos_amigaveis` cai para o nome cru do A360 e é listado nas pendências do `index.md`, para o time ir preenchendo conforme aparecem. O arquivo versionado já vem com os comandos do primeiro export processado.
+
+Comando dentro de um bloco que o dev nomeou não entra nessa lista: o rótulo do dev substitui os nomes de comando, então não há nada de feio a corrigir ali.
+
+**Não existe opção para "o que conta como estrutura de controle".** `If`, `Loop`, `Try` e `Step` são o que são na linguagem do A360 e o parser os reconhece pelo `commandName`. Uma chave de configuração que não mudasse nada seria pior que chave nenhuma, principalmente para um time que vai confiar no que está escrito no arquivo.
 
 ### 10.3 Layout
 
@@ -320,17 +341,19 @@ tests/
   example_model.py       bots de exemplo montados à mão
   test_render.py
   test_resolver.py
-  test_paths_config.py
+  test_paths_config.py    caminhos, dicionário e loader
+  test_parser.py          JSON do A360 → modelo
+  test_cli.py             pipeline ponta a ponta e orçamento de arestas
   fixtures/
     esperado/            os .md e .mmd que o render deve produzir
-    export_exemplo/      a criar, quando o .zip chegar
 docs/
   spec.md
 ```
 
 `paths.py` mora sozinho de propósito. Ele é a única costura dependente do
-formato do export que não está dentro do parser: quando as premissas 7 e 10 da
-§11 forem confirmadas, a correção entra lá e nenhuma outra camada muda.
+formato do export que não está dentro do parser. É ele que faz as duas formas de
+caminho da §11.2 casarem; errar ali transforma todo Run Task em "bot não
+encontrado".
 
 ### 10.4 Testes
 
@@ -340,32 +363,108 @@ Snapshot com `pytest`: o teste roda o pipeline sobre `fixtures/export_exemplo/` 
 
 Uma flag `--regenerar` reescreve os esperados, para quando a mudança no diagrama for intencional. É o formato de teste que alguém pouco técnico consegue ler e corrigir, e já cobre o critério de saída byte-idêntica da §12.
 
-## 11. Premissas a validar contra um export real — **bloqueador do MVP**
+## 11. O formato do export do A360
 
-Esta spec foi escrita sem um export em mãos. O desenho acima não depende do formato, mas o `parser.py` depende inteiramente dele. Pontos a confirmar antes de implementar:
+Validado em 2026-11-05 contra um export real do Control Room: 195 MB, 45 arquivos, 10 Task Bots, 370 nós.
 
-1. Layout do `.zip`: onde ficam os arquivos de bot, qual a extensão, o que mais vem no pacote (pacotes, dependências, metadados).
-2. Como distinguir Task Bot de Form bot e de API task dentro do export.
-3. O campo que guarda a árvore de ações e o nome do campo de filhos.
-4. Como `If`/`Else If`/`Else` guardam os ramos e a condição.
-5. Como `Loop` guarda o tipo de iteração e a coleção iterada.
-6. Como `Try`/`Catch`/`Finally` delimitam os blocos.
-7. `package`/`command` do `Run Task` e em que parâmetro fica o caminho do bot chamado, e em que forma (relativo, absoluto, com ou sem extensão).
-8. Onde fica o label/descrição que o dev digita numa ação.
-9. Onde fica a lista de variáveis, com tipo e marcação de entrada/saída.
-10. Se o export preserva nome de pasta e nome de bot de forma consistente com o caminho que o `Run Task` referencia.
+### 11.1 O pacote
 
-**O que preciso:** um export `.zip` do Control Room com pelo menos um bot que use `If`, `Loop`, `Try/Catch` e `Run Task` chamando outro bot do mesmo export. Pode ser anonimizado. Com ele, viram fixture de teste em `tests/fixtures/`.
+Quase tudo num export é **pacote**, não bot: 33 `.jar` respondiam por 190 dos 195 MB. O loader nunca os lê para a memória.
+
+Os bots são arquivos **sem extensão nenhuma**, sob `Automation Anywhere\Bots\...`. Quem é bot vem do `manifest.json`, pela `contentType`:
+
+```json
+{"path": "Automation Anywhere\\Bots\\CommonTask\\Log\\GravarLogBanco",
+ "contentType": "application/vnd.aa.taskbot", "excluded": false}
+```
+
+Qualquer detecção por extensão encontraria zero bots. Sem manifest, o loader cai para reconhecimento por conteúdo: objeto JSON com a chave `nodes`.
+
+### 11.2 As duas formas do caminho
+
+O mesmo bot aparece escrito de dois jeitos, e eles precisam casar:
+
+| Onde | Como |
+|---|---|
+| manifest e entrada do zip | `Automation Anywhere\Bots\CommonTask\Log\GravarLogBanco` |
+| atributo `taskbotFile` de um `runTask` | `repository:///Automation%20Anywhere/Bots/CommonTask/Log/GravarLogBanco` |
+
+Separador diferente, prefixo diferente e espaço percent-encoded. `paths.normalize` leva os dois a `CommonTask/Log/GravarLogBanco`. Sem isso, todo `Run Task` viraria "bot não encontrado".
+
+### 11.3 A árvore de ações
+
+O bot é um objeto com `triggers`, `nodes`, `variables`, `packages`, `properties`. Cada nó:
+
+```json
+{"uid": "...", "commandName": "try", "packageName": "ErrorHandler",
+ "disabled": false, "attributes": [...], "children": [...], "branches": [...]}
+```
+
+- `children` é o corpo; `branches` são os ramos alternativos, e cada ramo é um nó com `commandName` próprio: `elseIf` e `else` num `if`, `catch` e `finally` num `try`.
+- `disabled: true` é ação desligada no A360. Não roda, então não entra no diagrama.
+
+Mapa de `commandName` para o modelo:
+
+| commandName | vira |
+|---|---|
+| `if` + ramos `elseIf` / `else` | `If` |
+| `try` + ramos `catch` / `finally` | `TryCatch` |
+| `loop.commands.start` | `Loop` |
+| `loop.commands.break` / `.continue` | `Break` / `Continue` |
+| `step` (tem `title`) | `Step` |
+| `runTask` | `CallBot` |
+| `Comment` | rótulo do próximo bloco |
+| qualquer outro | ação dentro de um `ActionBlock`, nomeada `Pacote:Comando` |
+
+Comando desconhecido que tenha `children` vira agrupador, não ação, para as ações de dentro não sumirem do diagrama quando a Automation Anywhere lançar um pacote novo.
+
+### 11.4 Não existe rótulo na ação
+
+**O A360 não guarda um label por ação.** O que o dev escreve são nós `Comment` separados, com um atributo `comment`. É daí que sai o rótulo dos blocos: um comentário rotula o bloco de ações seguinte.
+
+Comentário seguido direto de uma estrutura de controle é descartado — `If` e `Loop` já se explicam pela condição, e criar um nó só para o texto encheria o diagrama de caixa sem fluxo.
+
+### 11.5 Condições
+
+Vêm em duas formas, e confundir as duas produz `Se: ⋯` sem sentido:
+
+**Comparação** (`numberVariable`, `stringVariable`, `booleanVariable`, `listVariable`): atributos `variable`, `operator`, `value`, encadeados por `operatorAttribute` com `operator` `OR` ou `AND`.
+
+**Predicado** (`fileExists`, `fileNotExists`, `folderDoesNotExists`, `valueExistsForKey`): não compara nada. O sentido está no `conditionalName` e os atributos são argumentos dele.
+
+Operadores vistos: `EQ`, `NEQ`, `GT`, `LTE`, `INCLUDE`, `NOTINCLUDE` — sem underscore em `NOTINCLUDE`.
+
+### 11.6 Loops
+
+`loopType` é `ITERATOR` ou `WHILE`. Sendo `ITERATOR`, o que manda é `iterator.value.iteratorName`:
+
+| iteratorName | texto |
+|---|---|
+| `iteratorTableRow` | para cada linha de `<sourceTable>` |
+| `loop.iterators.files` | para cada arquivo de `<folderPath>` |
+| `loop.iterators.times` | repetir `<times>` vezes |
+
+`WHILE` usa a mesma estrutura de condição do `if`.
+
+### 11.7 Variáveis
+
+Em `variables`, no topo do bot: `name`, `type`, `input`, `output`, `description`, `subtype`, `defaultValue`. Só os quatro primeiros entram no modelo — `defaultValue` carregaria valor literal (§9).
 
 ## 12. Critérios de aceite do MVP
 
-1. `python -m aa_diagram_export --input export.zip --out docs/bots` roda e termina em 0.
-2. Gera um `.md` por Task Bot do export, com diagrama Mermaid sintaticamente válido (validado por `mmdc` ou pelo parser do Mermaid em CI).
-3. `If`, `Loop`, `Try/Catch`, `Step` e `Run Task` aparecem corretamente no diagrama de um bot de referência.
-4. `Run Task` para bot do export aparece expandido; para bot de fora, aparece como não resolvido e listado no `index.md`.
-5. Ciclo entre dois bots não causa recursão infinita.
-6. Nenhum valor literal de parâmetro aparece em qualquer `.md` gerado.
-7. Rodar duas vezes sobre o mesmo export produz saída byte-idêntica.
+Todos verificados em 2026-11-05, contra o export real e pela suíte de 74 testes.
+
+| | Critério | Como foi verificado |
+|---|---|---|
+| 1 | A CLI roda e termina em 0 | export real: 10 bots, 11 arquivos, `rc=0` |
+| 2 | Um `.md` por Task Bot, com Mermaid válido | os 11 diagramas renderizados por `mmdc` |
+| 3 | `If`, `Loop`, `Try/Catch`, `Step` e `Run Task` corretos | `test_parser.py`, um teste por construção |
+| 4 | `Run Task` expandido; bot de fora como não resolvido | `test_resolver.py`, `test_cli.py` |
+| 5 | Ciclo não causa recursão infinita | `test_resolver.py::test_ciclo_nao_recursa_infinitamente` |
+| 6 | Nenhum valor literal num `.md` gerado | guarda estrutural no modelo e no parser |
+| 7 | Duas rodadas dão saída byte-idêntica | `test_cli.py::test_rodar_duas_vezes_da_o_mesmo_byte` |
+
+Um oitavo critério apareceu durante a validação e entrou junto: **nenhum diagrama gerado pode passar do limite de arestas do Mermaid** (§8.1), porque acima dele o arquivo não renderiza em lugar nenhum.
 
 ## 13. Fora de escopo do MVP
 

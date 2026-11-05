@@ -1,37 +1,46 @@
-"""Como o caminho de um bot é escrito e comparado.
+"""Como um caminho de bot é escrito e comparado.
 
-Este arquivo existe sozinho de propósito: é a costura que depende do formato
-do export. As premissas 7 e 10 da §11 da spec — em que forma o `Run Task`
-guarda o caminho do bot chamado, e se o export preserva esse caminho de modo
-consistente — ainda não foram validadas contra um export real.
+Validado contra um export real do Control Room (A360) em 2026-11-05. O export
+traz o mesmo bot escrito de duas formas, e elas precisam casar:
 
-Quando o `.zip` chegar, é aqui que a correção entra. Nenhuma outra camada
-precisa mudar, porque loader e resolver comparam caminhos só por estas
-funções.
+- no `manifest.json` e no nome das entradas do zip:
+  ``Automation Anywhere\\Bots\\CommonTask\\Log\\GravarLogBanco``
+- no atributo `taskbotFile` de um `runTask`:
+  ``repository:///Automation%20Anywhere/Bots/CommonTask/Log/GravarLogBanco``
+
+`normalize` leva as duas à mesma string: ``CommonTask/Log/GravarLogBanco``.
+
+Arquivo de bot do A360 **não tem extensão**. Quem é bot e quem não é vem do
+`contentType` no manifest, não do nome do arquivo.
 """
 
 from __future__ import annotations
 
+from urllib.parse import unquote
+
+PREFIXO_REPOSITORIO = "repository:///"
+RAIZES_DO_REPOSITORIO = ("automation anywhere/", "bots/")
+# Bots do A360 não têm extensão; isto cobre export de outras versões.
 EXTENSOES_DE_BOT = (".json", ".atmx")
-PREFIXOS_IGNORADOS = ("bots/",)
+
+CONTENT_TYPE_TASKBOT = "application/vnd.aa.taskbot"
 
 
 def normalize(bruto: str) -> str:
-    """Forma canônica de um caminho de bot, usada como chave de inventário.
+    """Forma canônica de um caminho de bot, usada como chave de inventário."""
+    caminho = (bruto or "").strip()
 
-    Tira separador de Windows, barra sobrando, prefixo de repositório e
-    extensão, para que o caminho que o `Run Task` referencia e o caminho do
-    arquivo no export cheguem à mesma string.
-    """
-    caminho = bruto.strip().replace("\\", "/")
+    if caminho.lower().startswith(PREFIXO_REPOSITORIO):
+        caminho = caminho[len(PREFIXO_REPOSITORIO) :]
+
+    caminho = unquote(caminho).replace("\\", "/")
     while "//" in caminho:
         caminho = caminho.replace("//", "/")
     caminho = caminho.strip("/")
 
-    for prefixo in PREFIXOS_IGNORADOS:
-        if caminho.lower().startswith(prefixo):
-            caminho = caminho[len(prefixo) :]
-            break
+    for raiz in RAIZES_DO_REPOSITORIO:
+        if caminho.lower().startswith(raiz):
+            caminho = caminho[len(raiz) :]
 
     for extensao in EXTENSOES_DE_BOT:
         if caminho.lower().endswith(extensao):
@@ -44,17 +53,11 @@ def normalize(bruto: str) -> str:
 def is_dynamic(bruto: str) -> bool:
     """O alvo do Run Task vem de variável, então não dá pra resolver parado.
 
-    No A360 a variável aparece entre `$`. Heurística, e também pendente de
-    confirmação contra o export real.
+    No A360 a variável aparece entre `$`, como em `$sNomeDoBot$`.
     """
-    return "$" in bruto
+    return "$" in (bruto or "")
 
 
-def looks_like_bot_file(nome: str) -> bool:
-    """O arquivo tem cara de bot, pelo nome.
-
-    Distinguir Task Bot de Form bot e de API task exige olhar o conteúdo, e é
-    a premissa 2 da §11 — ainda aberta. Por ora o filtro é só a extensão, e o
-    loader conta como ignorado tudo que não passa.
-    """
-    return nome.lower().endswith(EXTENSOES_DE_BOT)
+def bot_name(logical_path: str) -> str:
+    """Nome de exibição do bot: o último segmento do caminho."""
+    return logical_path.rsplit("/", 1)[-1] or logical_path

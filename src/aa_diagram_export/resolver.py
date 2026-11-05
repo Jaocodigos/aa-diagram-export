@@ -41,6 +41,19 @@ class ResolveReport:
     def add_unresolved(self, alvo: str, quem_chamou: str) -> None:
         self.unresolved.setdefault(alvo, set()).add(quem_chamou)
 
+    def merge(self, outro: ResolveReport) -> None:
+        """Incorpora outro relatório.
+
+        Serve para quando o chamador expande o mesmo bot mais de uma vez —
+        por exemplo testando profundidades até caber no limite do Mermaid — e
+        só quer contabilizar a tentativa que valeu.
+        """
+        for alvo, quem in outro.unresolved.items():
+            self.unresolved.setdefault(alvo, set()).update(quem)
+        self.cycles |= outro.cycles
+        self.depth_limited |= outro.depth_limited
+        self.dynamic |= outro.dynamic
+
     def as_lists(self) -> dict[str, list[str]]:
         """Versão ordenada, para o render montar a seção de pendências."""
         return {alvo: sorted(quem) for alvo, quem in sorted(self.unresolved.items())}

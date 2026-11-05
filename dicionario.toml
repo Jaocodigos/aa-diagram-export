@@ -14,14 +14,48 @@ limite        = "stroke:#862e9c,stroke-width:2px,stroke-dasharray:2 2"
 
 [comandos_amigaveis]
 # "Pacote:Comando" do A360 = rótulo que aparece no diagrama.
-# Comando sem entrada aqui aparece com o nome cru e é listado no index.md.
-"Excel advanced:Open"             = "Excel: abrir planilha"
-"Excel advanced:GetMultipleCells" = "Excel: ler intervalo"
-"Excel advanced:Close"            = "Excel: fechar planilha"
-"Browser:Launch"                  = "Navegador: abrir"
-"Browser:Close"                   = "Navegador: fechar"
-"Email:Send"                      = "E-mail: enviar"
+# Comando sem entrada aqui aparece com o nome cru e é listado nas pendências
+# do index.md. Esta lista saiu dos comandos realmente usados no primeiro
+# export processado; é só ir acrescentando conforme aparecerem novos.
 
-[estruturas_de_controle]
-# Pacotes tratados como estrutura. O resto colapsa em bloco linear.
-pacotes = ["If", "Loop", "ErrorHandler", "Step", "TaskBot"]
+"Database:connect"             = "Banco: conectar"
+"Database:disconnect"          = "Banco: desconectar"
+"Database:store"               = "Banco: executar e guardar retorno"
+"Database:exportToDataTable"   = "Banco: exportar para tabela"
+"Database:insertUpdateDelete"  = "Banco: insert / update / delete"
+
+"DataTable:getNumberOfRows"    = "Tabela: contar linhas"
+"DataTable:setCellValue"       = "Tabela: gravar célula"
+"DataTable:insertRow"          = "Tabela: inserir linha"
+
+"Excel:OpenSpreadsheet"        = "Excel: abrir planilha"
+"Excel:GetMultipleCells"       = "Excel: ler intervalo"
+"Excel:CloseSpreadsheet"       = "Excel: fechar planilha"
+
+"CsvTxt:OpenCSVTXT"            = "CSV: abrir"
+"CsvTxt:ReadFromCsvTxt"        = "CSV: ler"
+"CsvTxt:CloseCsvTxt"           = "CSV: fechar"
+
+"File:createFile"              = "Arquivo: criar"
+"File:copyFiles"               = "Arquivo: copiar"
+"File:deleteFiles"             = "Arquivo: apagar"
+"Folder:createFolder"          = "Pasta: criar"
+"Folder:copyFolder"            = "Pasta: copiar"
+
+"String:assign"                = "Texto: atribuir"
+"String:replace"               = "Texto: substituir"
+"String:length"                = "Texto: tamanho"
+"String:trim"                  = "Texto: limpar espaços"
+"Number:assignToNumber"        = "Número: atribuir"
+"Number:increment"             = "Número: incrementar"
+"Boolean:assign"               = "Booleano: atribuir"
+"List:addItem"                 = "Lista: adicionar item"
+"Dictionary:put"               = "Dicionário: gravar chave"
+"JSONParser:dicttojson"        = "JSON: converter dicionário"
+
+"Python:python.commands.openScript"      = "Python: abrir script"
+"Python:python.commands.executeFunction" = "Python: executar função"
+"Python:python.commands.closeScript"     = "Python: fechar script"
+
+"ErrorHandler:throw"           = "Lançar erro"
+"MessageBox:messageBox"        = "Caixa de mensagem"

@@ -21,23 +21,18 @@ ESTILO_PADRAO: dict[str, str] = {
     "limite": "stroke:#862e9c,stroke-width:2px,stroke-dasharray:2 2",
 }
 
-PACOTES_DE_CONTROLE_PADRAO: tuple[str, ...] = (
-    "If",
-    "Loop",
-    "ErrorHandler",
-    "Step",
-    "TaskBot",
-)
-
-
 @dataclass(frozen=True)
 class Dictionary:
-    """O conteúdo do dicionario.toml, já com os padrões aplicados."""
+    """O conteúdo do dicionario.toml, já com os padrões aplicados.
+
+    Não há opção para "o que conta como estrutura de controle": If, Loop,
+    Try e Step são o que são na linguagem do A360, identificados pelo
+    `commandName`. Um botão que não muda nada seria pior que botão nenhum.
+    """
 
     max_depth: int = 3
     style: dict[str, str] = field(default_factory=lambda: dict(ESTILO_PADRAO))
     friendly_commands: dict[str, str] = field(default_factory=dict)
-    control_packages: tuple[str, ...] = PACOTES_DE_CONTROLE_PADRAO
 
     def friendly(self, command: str) -> str | None:
         """Rótulo amigável do comando, ou None se o time ainda não cadastrou.
@@ -71,12 +66,8 @@ def load(path: Path | None = None) -> Dictionary:
         raise ValueError(f"{path} tem erro de sintaxe TOML: {erro}") from erro
 
     geral = bruto.get("geral", {})
-    controle = bruto.get("estruturas_de_controle", {})
     return Dictionary(
         max_depth=int(geral.get("profundidade_maxima", 3)),
         style=ESTILO_PADRAO | bruto.get("estilo", {}),
         friendly_commands=dict(bruto.get("comandos_amigaveis", {})),
-        control_packages=tuple(
-            controle.get("pacotes", PACOTES_DE_CONTROLE_PADRAO)
-        ),
     )

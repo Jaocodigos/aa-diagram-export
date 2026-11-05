@@ -20,27 +20,30 @@ def _expandido():
     return resolver.expand(bot_principal(), inventario, max_depth=3)
 
 
+def _desenho():
+    return render.bot_diagram(_expandido()[0], dicionario_de_teste())
+
+
 def test_diagrama_do_bot(snapshot):
-    expandido, _ = _expandido()
-    diagrama, _ = render.bot_diagram(expandido, dicionario_de_teste())
-    snapshot("conciliacao_diaria.mmd", diagrama)
+    snapshot("conciliacao_diaria.mmd", _desenho().mermaid)
 
 
 def test_pagina_do_bot(snapshot):
-    expandido, _ = _expandido()
-    dic = dicionario_de_teste()
-    diagrama, _ = render.bot_diagram(expandido, dic)
-    pagina = render.bot_page(bot_principal(), dic, diagram=diagrama, max_depth=3)
+    pagina = render.bot_page(
+        bot_principal(),
+        dicionario_de_teste(),
+        diagram=_desenho(),
+        depth_used=3,
+        depth_requested=3,
+    )
     snapshot("conciliacao_diaria.md", pagina)
 
 
 def test_index(snapshot):
-    dic = dicionario_de_teste()
-    bots = sorted([bot_principal(), bot_relatorio()], key=lambda b: b.path)
     _, relatorio = _expandido()
     pagina = render.index_page(
-        bots,
-        dic,
+        sorted([bot_principal(), bot_relatorio()], key=lambda b: b.path),
+        dicionario_de_teste(),
         unresolved=relatorio.as_lists(),
         unknown_commands={"Excel advanced:SetCell", "Browser:Download"},
         ignored_files=2,
@@ -50,10 +53,7 @@ def test_index(snapshot):
 
 def test_render_e_deterministico():
     """Critério 7 de aceite da §12: rodar duas vezes dá o mesmo byte."""
-    dic = dicionario_de_teste()
-    primeiro, _ = render.bot_diagram(_expandido()[0], dic)
-    segundo, _ = render.bot_diagram(_expandido()[0], dic)
-    assert primeiro == segundo
+    assert _desenho().mermaid == _desenho().mermaid
 
 
 def test_id_de_no_nao_depende_da_posicao():
@@ -64,31 +64,79 @@ def test_id_de_no_nao_depende_da_posicao():
 
 
 def test_comandos_sem_rotulo_sao_reportados():
-    expandido, _ = _expandido()
-    _, faltantes = render.bot_diagram(expandido, dicionario_de_teste())
+    faltantes = _desenho().unknown_commands
     assert "Excel advanced:SetCell" in faltantes
     assert "Browser:Download" in faltantes
     assert "Email:Send" not in faltantes
 
 
+def test_rotulo_do_dev_nao_gera_pendencia():
+    """Bloco nomeado pelo dev não mostra nome de comando, logo nada a cadastrar."""
+    dic = dicionario_de_teste()
+    bot = model.Bot(
+        path="X",
+        name="X",
+        body=(model.ActionBlock("a", commands=("Sem:Rotulo",), label="Passo nomeado"),),
+    )
+    assert render.bot_diagram(bot, dic).unknown_commands == frozenset()
+
+
 def test_bot_ausente_aparece_no_diagrama_e_no_grafo():
-    expandido, relatorio = _expandido()
-    diagrama, _ = render.bot_diagram(expandido, dicionario_de_teste())
-    assert "não encontrado no export" in diagrama
+    _, relatorio = _expandido()
+    assert "não encontrado no export" in _desenho().mermaid
     assert "Comum/Auditoria" in relatorio.unresolved
 
-    grafo = render.call_graph(
-        [bot_principal(), bot_relatorio()], dicionario_de_teste()
-    )
+    grafo = render.call_graph([bot_principal(), bot_relatorio()], dicionario_de_teste())
     assert CAMINHO_AUSENTE in grafo
 
 
 def test_estado_de_chamada_tem_forma_propria():
-    expandido, _ = _expandido()
-    diagrama, _ = render.bot_diagram(expandido, dicionario_de_teste())
-    assert "recursão:" in diagrama
-    assert "alvo dinâmico:" in diagrama
-    assert "subgraph" in diagrama
+    mermaid = _desenho().mermaid
+    assert "recursão:" in mermaid
+    assert "alvo dinâmico:" in mermaid
+    assert "subgraph" in mermaid
+
+
+# --- limite de arestas do Mermaid ---
+
+
+def test_conta_arestas():
+    desenho = _desenho()
+    arestas = [
+        linha
+        for linha in desenho.mermaid.splitlines()
+        if "-->" in linha or "-.->" in linha
+    ]
+    assert desenho.edge_count == len(arestas)
+
+
+def test_too_big_usa_o_limite(monkeypatch):
+    monkeypatch.setattr(render, "LIMITE_DE_ARESTAS", 1)
+    assert _desenho().too_big
+    monkeypatch.setattr(render, "LIMITE_DE_ARESTAS", 10_000)
+    assert not _desenho().too_big
+
+
+def test_pagina_avisa_quando_reduziu():
+    pagina = render.bot_page(
+        bot_principal(),
+        dicionario_de_teste(),
+        diagram=_desenho(),
+        depth_used=1,
+        depth_requested=3,
+    )
+    assert "Expandido até a profundidade 1" in pagina
+    assert "| Profundidade de expansão | 1 |" in pagina
+
+
+def test_index_lista_bots_reduzidos():
+    pagina = render.index_page(
+        [bot_principal()],
+        dicionario_de_teste(),
+        depth_reduced={"Bots/X": (1, 3)},
+    )
+    assert "Bots com expansão reduzida" in pagina
+    assert "expandido até 1, e não 3" in pagina
 
 
 @pytest.mark.parametrize(

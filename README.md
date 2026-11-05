@@ -10,26 +10,34 @@ O desenho completo está em [`docs/spec.md`](docs/spec.md).
 
 ## Estado atual
 
-O pipeline é `loader → parser → resolver → render`. Hoje:
-
-| Módulo | Estado |
-|---|---|
-| `model.py`, `render.py`, `resolver.py`, `config.py`, `paths.py`, `loader.py`, `__main__.py` | prontos e testados |
-| `parser.py` — JSON do A360 → modelo | **falta**, à espera de um export real |
-
-O parser é o único módulo que depende do formato do arquivo exportado, e esse
-formato ainda não foi validado contra um export de verdade (§11 da spec). Até
-lá, rodar a CLI termina com uma mensagem dizendo exatamente isso.
-
-Para destravar: um `.zip` do Control Room com pelo menos um bot usando `If`,
-`Loop`, `Try/Catch` e um `Run Task` chamando outro bot do mesmo export. Pode
-ser anonimizado.
+O pipeline `loader → parser → resolver → render` está completo e validado
+contra um export real do Control Room. O formato do arquivo exportado está
+documentado na §11 da spec.
 
 ## Como rodar
+
+O pacote está em `src/`, então precisa ser instalado uma vez:
+
+```
+pip install -e .
+```
+
+Depois, de qualquer lugar:
 
 ```
 python -m aa_diagram_export --input <zip ou pasta> --out docs/diagramas
 ```
+
+Sem instalar, dá para rodar da raiz do repositório apontando o `PYTHONPATH`:
+
+```
+# Windows (PowerShell)
+$env:PYTHONPATH="src"; python -m aa_diagram_export --input .\bot.zip --out .\docs\diagramas
+```
+
+Atenção: `python -m` recebe **nome de módulo**, não caminho de pasta.
+`python -m .\src\aa_diagram_export\` falha com "Relative module names not
+supported".
 
 Opções:
 
@@ -51,8 +59,17 @@ Não é preciso abrir nenhum `.py`:
   seção de pendências do `index.md`, para o time ir preenchendo.
 - `[estilo]` — as cores de cada tipo de nó.
 - `[geral] profundidade_maxima` — quantos níveis de subtarefa expandir.
-- `[estruturas_de_controle] pacotes` — quais comandos contam como estrutura e
-  não são colapsados no bloco de ações.
+
+## Um limite que vale conhecer
+
+O Mermaid recusa diagrama com mais de 500 arestas, e o GitHub usa essa
+configuração padrão — não dá para elevar o limite de dentro do arquivo. Um bot
+orquestrador com várias subtarefas expandidas passa disso com facilidade.
+
+Quando isso acontece, o gerador refaz o diagrama com um nível a menos de
+expansão, até caber, e escreve na página do bot que reduziu. Cada bot chamado
+continua tendo o diagrama próprio, então nada se perde — só deixa de estar
+tudo no mesmo desenho.
 
 ## Desenvolvimento
 

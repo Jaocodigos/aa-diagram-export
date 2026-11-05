@@ -69,6 +69,30 @@ def build_argparser() -> argparse.ArgumentParser:
     return cli
 
 
+def _desenhar_dentro_do_limite(
+    bot: Bot,
+    inventario: dict[str, Bot],
+    dic: config.Dictionary,
+    profundidade: int,
+) -> tuple[render.Diagram, resolver.ResolveReport, int]:
+    """Desenha o bot na maior profundidade que ainda renderiza.
+
+    O Mermaid recusa diagrama com mais de 500 arestas e o GitHub usa esse
+    padrão, então expandir demais produz um arquivo que não aparece para
+    ninguém. Em vez de entregar isso, o diagrama é refeito com um nível a
+    menos até caber, e a página diz que foi reduzida.
+    """
+    for tentativa in range(profundidade, -1, -1):
+        parcial = resolver.ResolveReport()
+        expandido, _ = resolver.expand(
+            bot, inventario, max_depth=tentativa, report=parcial
+        )
+        diagrama = render.bot_diagram(expandido, dic)
+        if not diagrama.too_big or tentativa == 0:
+            return diagrama, parcial, tentativa
+    raise AssertionError("inalcançável: o laço sempre retorna em tentativa == 0")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_argparser().parse_args(argv)
 
@@ -85,15 +109,15 @@ def main(argv: list[str] | None = None) -> int:
     profundidade = args.max_depth if args.max_depth is not None else dic.max_depth
 
     try:
-        with loader.open_export(args.input) as export:
-            bots: list[Bot] = []
-            for arquivo in export.files:
-                dados = json.loads(arquivo.file.read_text(encoding="utf-8"))
-                bots.append(parse_bot(dados, arquivo.logical_path))
-            ignorados = export.ignored
-    except NotImplementedError as erro:
-        aviso(str(erro))
-        return 2
+        export = loader.load_export(args.input)
+        bots: list[Bot] = []
+        for arquivo in export.files:
+            try:
+                bots.append(parse_bot(json.loads(arquivo.content), arquivo.logical_path))
+            except ValueError as erro:
+                # Um arquivo ruim não derruba o export inteiro.
+                aviso(f"ignorado: {erro}")
+        ignorados = export.ignored
     except (FileNotFoundError, ValueError) as erro:
         aviso(f"erro na entrada: {erro}")
         return 2
@@ -105,18 +129,25 @@ def main(argv: list[str] | None = None) -> int:
     inventario = resolver.build_inventory(bots)
     relatorio = resolver.ResolveReport()
     desconhecidos: set[str] = set()
+    reduzidos: dict[str, tuple[int, int]] = {}
     paginas: dict[str, str] = {}
 
     for bot in sorted(bots, key=lambda b: b.path):
-        expandido, _ = resolver.expand(
-            bot, inventario, max_depth=profundidade, report=relatorio
+        diagrama, parcial, usada = _desenhar_dentro_do_limite(
+            bot, inventario, dic, profundidade
         )
-        diagrama, faltantes = render.bot_diagram(expandido, dic)
-        desconhecidos |= faltantes
+        relatorio.merge(parcial)
+        desconhecidos |= set(diagrama.unknown_commands)
+        if usada < profundidade:
+            reduzidos[bot.path] = (usada, profundidade)
+            aviso(
+                f"{bot.path}: expandido até {usada} em vez de {profundidade} "
+                "para caber no limite de arestas do Mermaid"
+            )
         # Os metadados vêm do bot original: a contagem de ações e a lista de
         # bots chamados são dele, não das subtarefas que entraram no desenho.
         paginas[render.page_relpath(bot)] = render.bot_page(
-            bot, dic, diagram=diagrama, max_depth=profundidade
+            bot, dic, diagram=diagrama, depth_used=usada, depth_requested=profundidade
         )
 
     paginas["index.md"] = render.index_page(
@@ -126,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         unknown_commands=desconhecidos,
         ignored_files=ignorados,
         include_call_graph=not args.no_call_graph,
+        depth_reduced=reduzidos,
     )
 
     for relativo, conteudo in sorted(paginas.items()):

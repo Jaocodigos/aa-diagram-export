@@ -305,8 +305,30 @@ class _Canvas:
         return linhas
 
 
-def bot_diagram(bot: Bot, dic: Dictionary) -> tuple[str, set[str]]:
-    """Diagrama de fluxo de um bot. Devolve (mermaid, comandos_sem_rotulo)."""
+#: O Mermaid recusa um diagrama com mais de 500 arestas, e `maxEdges` é
+#: configuração segura: não dá para elevar de dentro do diagrama. Como o
+#: GitHub renderiza com o padrão, passar disso significa diagrama que
+#: simplesmente não aparece. A margem deixa espaço para as arestas de início
+#: e fim. Medido num export real: o bot orquestrador passa de 500 ao expandir
+#: as subtarefas em profundidade 2.
+LIMITE_DE_ARESTAS = 480
+
+
+@dataclass(frozen=True)
+class Diagram:
+    """O diagrama de um bot, com o que o chamador precisa saber sobre ele."""
+
+    mermaid: str
+    unknown_commands: frozenset[str]
+    edge_count: int
+
+    @property
+    def too_big(self) -> bool:
+        return self.edge_count > LIMITE_DE_ARESTAS
+
+
+def bot_diagram(bot: Bot, dic: Dictionary) -> Diagram:
+    """Diagrama de fluxo de um bot."""
     canvas = _Canvas(dic=dic)
     inicio = stable_node_id(f"{bot.path}:inicio")
     fim = stable_node_id(f"{bot.path}:fim")
@@ -322,7 +344,11 @@ def bot_diagram(bot: Bot, dic: Dictionary) -> tuple[str, set[str]]:
         canvas.link(saidas, fim)
 
     linhas = ["flowchart TD", *canvas.decls, *canvas.edges, *canvas.class_lines()]
-    return "\n".join(linhas), canvas.unknown_commands
+    return Diagram(
+        mermaid="\n".join(linhas),
+        unknown_commands=frozenset(canvas.unknown_commands),
+        edge_count=len(canvas.edges),
+    )
 
 
 def call_graph(bots: list[Bot], dic: Dictionary) -> str:
@@ -383,8 +409,9 @@ def bot_page(
     bot: Bot,
     dic: Dictionary,
     *,
-    diagram: str,
-    max_depth: int,
+    diagram: Diagram,
+    depth_used: int,
+    depth_requested: int | None = None,
 ) -> str:
     """Página Markdown de um bot (§4)."""
     chamados = called_bots(bot)
@@ -395,10 +422,28 @@ def bot_page(
         "|---|---|",
         f"| Caminho no export | `{bot.path}` |",
         f"| Ações | {action_count(bot)} |",
-        f"| Profundidade de expansão | {max_depth} |",
+        f"| Profundidade de expansão | {depth_used} |",
         "",
+    ]
+
+    if depth_requested is not None and depth_requested > depth_used:
+        linhas += [
+            f"> Expandido até a profundidade {depth_used}, e não {depth_requested}: "
+            f"o diagrama completo passava do limite de {LIMITE_DE_ARESTAS} arestas "
+            "do Mermaid e não renderizaria. Os bots chamados têm diagrama próprio, "
+            "linkado em Dependências.",
+            "",
+        ]
+    elif diagram.too_big:
+        linhas += [
+            f"> Atenção: {diagram.edge_count} arestas, acima do limite do Mermaid. "
+            "Este diagrama pode não renderizar no GitHub mesmo sem expansão.",
+            "",
+        ]
+
+    linhas += [
         "```mermaid",
-        diagram,
+        diagram.mermaid,
         "```",
         "",
     ]
@@ -436,6 +481,7 @@ def index_page(
     unknown_commands: set[str] | None = None,
     ignored_files: int = 0,
     include_call_graph: bool = True,
+    depth_reduced: dict[str, tuple[int, int]] | None = None,
 ) -> str:
     """Página de entrada: grafo de chamadas, inventário e pendências (§4)."""
     unresolved = unresolved or {}
@@ -493,6 +539,21 @@ def index_page(
         ]
         for comando in sorted(unknown_commands):
             linhas.append(f'- `"{comando}"`')
+        linhas.append("")
+
+    if depth_reduced:
+        algo = True
+        linhas += [
+            "### Bots com expansão reduzida",
+            "",
+            f"O diagrama completo passava do limite de {LIMITE_DE_ARESTAS} arestas "
+            "do Mermaid, que não renderiza acima disso. Cada bot chamado tem o "
+            "diagrama próprio, linkado na página do chamador.",
+            "",
+        ]
+        for caminho in sorted(depth_reduced):
+            usada, pedida = depth_reduced[caminho]
+            linhas.append(f"- `{caminho}` — expandido até {usada}, e não {pedida}")
         linhas.append("")
 
     if ignored_files:
