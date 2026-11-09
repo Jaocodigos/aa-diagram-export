@@ -86,13 +86,27 @@ caber, e escreve na página que reduziu.
 **Legibilidade.** Esse é um limite bem mais baixo, e não tem nada a ver com o
 Mermaid: o navegador encolhe o desenho para caber na largura da página, então
 diagrama grande não vira diagrama grande, vira diagrama ilegível. Passando do
-`orcamento_de_nos`, os `Step` maiores saem do desenho principal e viram seções
-da mesma página, com um atalho em Markdown logo abaixo do panorama.
+`orcamento_de_nos`, os `Step` maiores saem do desenho principal e viram
+arquivos próprios, numa pasta irmã com o nome do bot:
 
-Os nós de seção também trazem um `click` do Mermaid, mas ele é só bônus para
-quem abrir fora do GitHub: o `securityLevel` padrão é `strict`, que desliga o
-clique e, como o `maxEdges`, não pode ser mudado de dentro do diagrama. A
-navegação confiável são os links Markdown.
+```
+bots/Processos/Sustentabilidade/P001-Ecobot/
+  P001-ExtraiFaturas.md                        panorama e metadados
+  P001-ExtraiFaturas/
+    01-obter-dados-exportados-python-para-inserir.md
+    02-faz-loop-em-cada-fatura-na-pasta.md
+    03-obter-dados-exportados-python-para-atualizar.md
+    04-obtem-item-fila-processamento-e-intera-sobre-o.md
+```
+
+A numeração segue a ordem de leitura do fluxo, não a ordem em que os passos
+foram extraídos. A página do bot lista os arquivos numa tabela, e cada arquivo
+tem link de volta para o bot e para o passo anterior e o seguinte.
+
+Os nós de passo também trazem um `click` do Mermaid apontando para o arquivo,
+mas ele é só bônus para quem abrir fora do GitHub: o `securityLevel` padrão é
+`strict`, que desliga o clique e, como o `maxEdges`, não pode ser mudado de
+dentro do diagrama. A navegação confiável são os links Markdown.
 
 ## Desenvolvimento
 

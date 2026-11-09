@@ -193,6 +193,17 @@ def main(argv: list[str] | None = None) -> int:
             depth_requested=profundidade,
             inventory=inventario,
         )
+        for posicao, secao in enumerate(desenho.sections):
+            paginas[render.section_relpath(bot, secao)] = render.section_page(
+                secao,
+                bot,
+                previous=desenho.sections[posicao - 1] if posicao else None,
+                following=(
+                    desenho.sections[posicao + 1]
+                    if posicao + 1 < len(desenho.sections)
+                    else None
+                ),
+            )
 
     paginas["index.md"] = render.index_page(
         documentados,

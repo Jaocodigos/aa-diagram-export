@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Projeto | `aa-diagram-export` |
-| Versão desta spec | 0.6 (MVP completo) |
+| Versão desta spec | 0.7 (MVP completo) |
 | Data | 2026-11-09 |
 | Status | Pipeline completo, validado contra um export real. O formato do A360 está documentado na §11. |
 
@@ -44,6 +44,7 @@ Um diretório de saída com:
   bots/
     Financeiro/
       ConciliacaoDiaria.md  um arquivo por bot
+      ConciliacaoDiaria/    os passos detalhados, quando o bot é grande (§8.2)
 ```
 
 Cada `bots/**/<bot>.md` traz:
@@ -72,7 +73,7 @@ O `index.md` traz o grafo de chamadas (`flowchart LR`, um nó por bot, uma arest
 | Execução | Linha de comando; `.bat` clicável e CI ficam fora do MVP |
 | Dependências | Execução: nenhuma por ora, cada nova com razão registrada. Desenvolvimento: `pytest`, `ruff` |
 | Bibliotecas | Padrões em `dicionario.toml`; o bot é mencionado no fluxo de quem chama, sem página própria (§8.3) |
-| Orçamento de nós | Diagrama acima de 30 nós quebra em seções na mesma página (§8.2) |
+| Orçamento de nós | Diagrama acima de 30 nós quebra em arquivos de passo numa pasta irmã (§8.2) |
 | Orçamento de arestas | Diagrama acima de 480 arestas é refeito com um nível a menos de expansão (§8.1) |
 
 ## 6. Arquitetura
@@ -256,19 +257,35 @@ Por isso o gerador trata profundidade como teto, não como ordem: desenha, conta
 
 Um bot que sozinho passe do limite, já sem expansão, sai mesmo assim, com um aviso na página de que pode não renderizar. Entregar o diagrama com aviso é melhor que não entregar.
 
-### 8.2 Quebra em seções
+### 8.2 Quebra em arquivos
 
 Arestas são o limite do Mermaid. Legibilidade é outro, bem mais baixo, e não tem nada a ver com o renderizador: o navegador encaixa o SVG na largura da coluna — cerca de 870 px no GitHub — e escala o desenho inteiro junto. Altura não incomoda, a página rola. Largura, sim: um diagrama que nasce com 3000 px chega a 29% do tamanho, e a fonte de 16 px vira 4,6 px.
 
 Disso vem uma consequência contraintuitiva que vale registrar, porque é a primeira ideia que ocorre: **aumentar a fonte não resolve**. Letra maior deixa cada caixa maior, o desenho fica mais largo e o navegador reduz mais. Dá na mesma.
 
-O que funciona é reduzir o conteúdo por desenho. Passando de `orcamento_de_nos` (padrão 30), os `Step` maiores saem do diagrama principal e viram seções da mesma página, cada uma com o seu diagrama. O `Step` é a costura natural: é o agrupador que o próprio dev criou no A360, tem título, e tirar um da vista não altera o fluxo, só esconde o miolo.
+O que funciona é reduzir o conteúdo por desenho. Passando de `orcamento_de_nos` (padrão 30), os `Step` maiores saem do diagrama principal e viram **arquivos próprios**, numa pasta irmã com o nome do bot:
+
+```
+bots/Processos/Sustentabilidade/P001-Ecobot/
+  P001-ExtraiFaturas.md                        panorama e metadados
+  P001-ExtraiFaturas/
+    01-obter-dados-exportados-python-para-inserir.md
+    02-faz-loop-em-cada-fatura-na-pasta.md
+```
+
+Arquivo separado em vez de âncora na mesma página porque o link vira um caminho de verdade: navega melhor, aparece na árvore do repositório e cada passo abre sozinho.
+
+O `Step` é a costura natural: é o agrupador que o próprio dev criou no A360, tem título, e tirar um da vista não altera o fluxo, só esconde o miolo.
 
 A escolha é gulosa — tira o maior `Step` ainda desenhado por inteiro, redesenha, repete até caber. Três detalhes que importam:
 
-- Só entram os `Step` mais rasos de cada ramo. Tirar um que está dentro de outro que continua no desenho deixaria uma seção fora do caminho de leitura.
-- `Step` com menos de 4 nós não é candidato: a página ganharia um salto de navegação para economizar quase nada.
+- Só entram os `Step` mais rasos de cada ramo. Tirar um que está dentro de outro que continua no desenho deixaria um arquivo fora do caminho de leitura.
+- `Step` com menos de 4 nós não é candidato: a navegação ganharia um salto para economizar quase nada.
 - Seção que continua passando do orçamento é quebrada de novo. Bot sem `Step` nenhum não tem onde cortar e sai inteiro.
+
+**A numeração segue a ordem de leitura, não a de extração.** Como a extração é gulosa, ela sai por tamanho: numerar por ela daria `01` ao maior passo e não ao primeiro, o contrário do que alguém espera ao percorrer a pasta. Por isso o trabalho sai em três fases — decidir quais saem, ordenar pelo fluxo e nomear, e só então desenhar com os links definitivos, já que o nome de cada arquivo depende da ordem final de todos.
+
+O nome vem do título, sem acento e sem maiúscula, cortado numa fronteira de palavra. Quem garante unicidade é o número, então dois `Step` com o mesmo título não colidem.
 
 Medido no export real, no bot orquestrador:
 
@@ -277,11 +294,11 @@ Medido no export real, no bot orquestrador:
 | antes, com tudo expandido | 263 |
 | só com as bibliotecas mencionadas | 76 |
 | panorama, depois da quebra | 30 |
-| as quatro seções | 21, 22, 24 e 12 |
+| os quatro arquivos de passo | 21, 22, 24 e 12 |
 
-**A navegação é por link Markdown, não por clique no nó.** O `securityLevel` padrão do Mermaid é `strict`, que desativa `click`, e é configuração segura: como o `maxEdges`, não pode ser mudada de dentro do diagrama, e o GitHub usa o padrão. Então a página escreve os atalhos em Markdown logo abaixo do panorama, e cada seção recebe uma âncora `<a id>` explícita — derivada do uid e não do título, porque dois `Step` podem ter o mesmo nome e cada plataforma monta o slug de um cabeçalho de um jeito. O `click` é emitido junto, como bônus para quem abrir fora do GitHub.
+**A navegação é por link Markdown, não por clique no nó.** O `securityLevel` padrão do Mermaid é `strict`, que desativa `click`, e é configuração segura: como o `maxEdges`, não pode ser mudada de dentro do diagrama, e o GitHub usa o padrão. Então a página do bot lista os passos numa tabela com link, e cada arquivo de passo traz link de volta ao bot e para o passo anterior e o seguinte. O `click` é emitido junto, apontando para o arquivo, como bônus para quem abrir fora do GitHub.
 
-A quebra é só apresentação: o modelo não sabe que seção existe. O render recebe um mapa de "este `Step` vira referência" e o resto segue igual, o que mantém a porta do DrawIO aberta.
+A quebra é só apresentação: o modelo não sabe que arquivo de passo existe. O render recebe um mapa de "este `Step` vira referência, apontando para tal caminho" e o resto segue igual, o que mantém a porta do DrawIO aberta.
 
 ### 8.3 Bibliotecas
 

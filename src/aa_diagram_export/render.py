@@ -259,12 +259,12 @@ class _Canvas:
         return try_entrada, try_saidas + catch_saidas
 
     def _step(self, n: Step) -> tuple[str, list[Saida]]:
-        ancora = self.externalize.get(n.uid)
-        if ancora is not None:
+        destino = self.externalize.get(n.uid)
+        if destino is not None:
             nid = stable_node_id(f"{n.uid}:ref")
             self.decls.append(f'  {nid}[["{escape(n.title or "Passo")}"]]')
             self.classify(nid, "secao")
-            self.clicks.append(f'  click {nid} "#{ancora}"')
+            self.clicks.append(f'  click {nid} "{destino}"')
             return nid, [(nid, None)]
 
         sid = stable_node_id(f"{n.uid}:step")
@@ -355,11 +355,12 @@ class Diagram:
 
 @dataclass(frozen=True)
 class Section:
-    """Um `Step` que saiu do diagrama principal e virou seção da página."""
+    """Um `Step` que saiu do diagrama principal e virou arquivo próprio."""
 
-    anchor: str
+    step_uid: str
     title: str
     diagram: Diagram
+    filename: str = ""
 
 
 def bot_diagram(
@@ -495,6 +496,49 @@ def page_relpath(bot: Bot) -> str:
     return str(PurePosixPath("bots", *seguro)) + ".md"
 
 
+def sections_dirname(bot: Bot) -> str:
+    """Nome da pasta irmã que guarda as seções deste bot."""
+    return PurePosixPath(page_relpath(bot)).stem
+
+
+def section_relpath(bot: Bot, section: Section) -> str:
+    """Caminho do arquivo de uma seção dentro do diretório de saída."""
+    return str(
+        PurePosixPath(page_relpath(bot)).with_suffix("") / section.filename
+    )
+
+
+def section_page(
+    section: Section,
+    bot: Bot,
+    *,
+    previous: Section | None = None,
+    following: Section | None = None,
+) -> str:
+    """Página de uma seção: o diagrama, mais a navegação de volta e entre pares."""
+    arquivo_do_bot = PurePosixPath(page_relpath(bot)).name
+    linhas = [
+        f"# {section.title}",
+        "",
+        f"Passo de [{bot.name}](../{arquivo_do_bot}).",
+        "",
+        "```mermaid",
+        section.diagram.mermaid,
+        "```",
+        "",
+    ]
+
+    vizinhos = []
+    if previous is not None:
+        vizinhos.append(f"← [{previous.title}]({previous.filename})")
+    if following is not None:
+        vizinhos.append(f"[{following.title}]({following.filename}) →")
+    if vizinhos:
+        linhas += ["---", "", " · ".join(vizinhos), ""]
+
+    return "\n".join(linhas)
+
+
 def _slug(texto: str) -> str:
     proibidos = '<>:"|?*'
     return "".join("_" if c in proibidos else c for c in texto).strip() or "sem_nome"
@@ -546,11 +590,14 @@ def bot_page(
     ]
 
     if sections:
-        atalhos = " · ".join(f"[{s.title}](#{s.anchor})" for s in sections)
-        linhas += [
-            f"Passos detalhados neste bot: {atalhos}",
-            "",
-        ]
+        pasta = sections_dirname(bot)
+        linhas += ["## Passos detalhados", "", "| | Passo | Nós |", "|---|---|---|"]
+        for posicao, secao in enumerate(sections, 1):
+            linhas.append(
+                f"| {posicao} | [{secao.title}]({pasta}/{secao.filename}) "
+                f"| {secao.diagram.node_count} |"
+            )
+        linhas.append("")
 
     if bot.variables:
         linhas += ["## Variáveis", "", "| Nome | Tipo | Entrada | Saída |", "|---|---|---|---|"]
@@ -575,21 +622,6 @@ def bot_page(
     if bot.packages:
         linhas.append("Pacotes usados: " + ", ".join(f"`{p}`" for p in bot.packages))
         linhas.append("")
-
-    for secao in sections:
-        linhas += [
-            # Âncora explícita em vez de confiar no slug que o renderizador
-            # gera do título: dois Steps podem ter o mesmo nome, e cada
-            # plataforma monta o slug de um jeito.
-            f'<a id="{secao.anchor}"></a>',
-            "",
-            f"## {secao.title}",
-            "",
-            "```mermaid",
-            secao.diagram.mermaid,
-            "```",
-            "",
-        ]
 
     return "\n".join(linhas)
 

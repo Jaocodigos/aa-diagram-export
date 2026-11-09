@@ -89,6 +89,49 @@ def test_entrada_inexistente_sai_com_erro(tmp_path, capsys):
     assert "erro na entrada" in capsys.readouterr().err
 
 
+def test_secoes_viram_arquivos_proprios(tmp_path):
+    """Cada passo detalhado é um .md numa pasta irmã, não um trecho da página."""
+    # Ação linear colapsa em bloco: sem os comentários separando, as dez
+    # viriam num nó só e não haveria o que quebrar.
+    miolo: list[dict] = []
+    for i in range(10):
+        miolo.append(_acao(f"c{i}", "Comment", "Comment", attributes=[
+            {"name": "comment", "value": {"type": "STRING", "string": f"Parte {i}"}}
+        ]))
+        miolo.append(_acao(f"a{i}", "String", "assign"))
+
+    passo = _acao("s1", "Step", "step",
+                  attributes=[{"name": "title", "value": {"type": "STRING", "string": "Passo Longo"}}],
+                  children=miolo)
+    bot = {"nodes": [passo], "variables": [], "packages": []}
+    manifesto = {"files": [{"path": CHAMADOR, "contentType": "application/vnd.aa.taskbot"}]}
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as z:
+        z.writestr("manifest.json", json.dumps(manifesto))
+        z.writestr(CHAMADOR, json.dumps(bot))
+    export = tmp_path / "export.zip"
+    export.write_bytes(buffer.getvalue())
+
+    saida = tmp_path / "docs"
+    assert cli.main([
+        "--input", str(export), "--out", str(saida),
+        "--node-budget", "6", "--quiet",
+    ]) == 0
+
+    pagina = saida / "bots" / "Processos" / "Exemplo.md"
+    secao = saida / "bots" / "Processos" / "Exemplo" / "01-passo-longo.md"
+    assert pagina.is_file() and secao.is_file()
+
+    texto_da_pagina = pagina.read_text(encoding="utf-8")
+    assert "Exemplo/01-passo-longo.md" in texto_da_pagina
+    assert texto_da_pagina.count("```mermaid") == 1
+
+    texto_da_secao = secao.read_text(encoding="utf-8")
+    assert "](../Exemplo.md)" in texto_da_secao
+    assert texto_da_secao.count("```mermaid") == 1
+
+
 # --- orçamento de arestas ---
 
 
