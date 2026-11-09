@@ -26,6 +26,7 @@ from .model import (
     Bot,
     Branch,
     Break,
+    CallBinding,
     CallBot,
     Continue,
     If,
@@ -206,7 +207,11 @@ def _estrutura(no: dict) -> Node:
             return Step(uid, title=titulo, body=_corpo(filhos))
 
         case "runTask":
-            return CallBot(uid, target_path=paths.normalize(_alvo(no)))
+            return CallBot(
+                uid,
+                target_path=paths.normalize(_alvo(no)),
+                bindings=_ligacoes(no),
+            )
 
         case "loop.commands.break":
             return Break(uid)
@@ -361,6 +366,53 @@ def _alvo(no: dict) -> str:
     valor = (_atributos(no).get("taskbot") or {}).get("value") or {}
     arquivo = valor.get("taskbotFile") or {}
     return arquivo.get("string") or arquivo.get("expression") or ""
+
+
+def _ligacoes(no: dict) -> tuple[CallBinding, ...]:
+    """Entradas e saídas declaradas na chamada.
+
+    As entradas vivem em `taskbot.value.taskbotInput.dictionary`, onde a
+    chave é o nome do parâmetro no bot chamado. As saídas vivem em `returnTo`
+    no próprio nó, mapeando a saída do chamado para a variável do chamador.
+
+    Só nome, tipo e a variável ligada entram. O valor de uma entrada é uma
+    expressão que pode conter literal, e literal não vai para o diagrama nem
+    para a página (§9) — daí só o nome da variável ser extraído dela.
+    """
+    ligacoes: list[CallBinding] = []
+
+    valor = (_atributos(no).get("taskbot") or {}).get("value") or {}
+    entradas = (valor.get("taskbotInput") or {}).get("dictionary") or []
+    for item in entradas:
+        if not isinstance(item, dict) or not item.get("key"):
+            continue
+        conteudo = item.get("value") or {}
+        ligacoes.append(
+            CallBinding(
+                name=str(item["key"]),
+                type=str(conteudo.get("type") or "").capitalize(),
+                is_output=False,
+                bound_to=_nome_de_variavel(conteudo),
+            )
+        )
+
+    saidas = (no.get("returnTo") or {}).get("dictionary") or []
+    for item in saidas:
+        if not isinstance(item, dict) or not item.get("key"):
+            continue
+        conteudo = item.get("value") or {}
+        ligacoes.append(
+            CallBinding(
+                name=str(item["key"]),
+                # O tipo aqui é sempre VARIABLE: o tipo de verdade está
+                # declarado no bot chamado, e o render cruza com ele.
+                type="",
+                is_output=True,
+                bound_to=conteudo.get("variableName") or None,
+            )
+        )
+
+    return tuple(ligacoes)
 
 
 def _variaveis(brutas: list[Any]) -> tuple[Variable, ...]:

@@ -69,6 +69,16 @@ flowchart TD
 | `nQtdDivergencias` | Number | — | sim |
 | `sCaminhoArquivo` | String | — | — |
 
+## Chamadas
+
+Nome e tipo dos parâmetros. O valor passado não aparece: numa entrada ele é uma expressão que pode carregar literal (§9).
+
+| Bot | Direção | Parâmetro | Tipo | Variável no chamador |
+|---|---|---|---|---|
+| `Bots/Comum/EnviarRelatorio` | — | — | — | — |
+| `Bots/Comum/Auditoria` | — | — | — | — |
+| `Bots/Comum/$sBotDinamico$` | — | — | — | — |
+
 ## Dependências
 
 Bots chamados:

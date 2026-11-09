@@ -10,6 +10,7 @@ cada nó visitado devolve um nó novo com o corpo já expandido.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
 from . import paths
@@ -37,6 +38,7 @@ class ResolveReport:
     cycles: set[str] = field(default_factory=set)
     depth_limited: set[str] = field(default_factory=set)
     dynamic: set[str] = field(default_factory=set)
+    libraries: set[str] = field(default_factory=set)
 
     def add_unresolved(self, alvo: str, quem_chamou: str) -> None:
         self.unresolved.setdefault(alvo, set()).add(quem_chamou)
@@ -53,6 +55,7 @@ class ResolveReport:
         self.cycles |= outro.cycles
         self.depth_limited |= outro.depth_limited
         self.dynamic |= outro.dynamic
+        self.libraries |= outro.libraries
 
     def as_lists(self) -> dict[str, list[str]]:
         """Versão ordenada, para o render montar a seção de pendências."""
@@ -70,8 +73,13 @@ def expand(
     *,
     max_depth: int = 3,
     report: ResolveReport | None = None,
+    is_library: Callable[[str], bool] | None = None,
 ) -> tuple[Bot, ResolveReport]:
-    """Devolve o bot com as subtarefas expandidas inline, mais o relatório."""
+    """Devolve o bot com as subtarefas expandidas inline, mais o relatório.
+
+    `is_library` marca os utilitários compartilhados: eles nunca são
+    expandidos, só mencionados como nó no fluxo de quem chama.
+    """
     report = report if report is not None else ResolveReport()
     corpo = _expand_body(
         bot.body,
@@ -80,6 +88,7 @@ def expand(
         chain=(paths.normalize(bot.path),),
         caller=bot.path,
         report=report,
+        is_library=is_library or (lambda _: False),
     )
     return replace(bot, body=corpo), report
 
@@ -92,6 +101,7 @@ def _expand_body(
     chain: tuple[str, ...],
     caller: str,
     report: ResolveReport,
+    is_library: Callable[[str], bool],
 ) -> tuple[Node, ...]:
     recursao = dict(
         inventory=inventory,
@@ -99,6 +109,7 @@ def _expand_body(
         chain=chain,
         caller=caller,
         report=report,
+        is_library=is_library,
     )
     saida: list[Node] = []
 
@@ -148,6 +159,7 @@ def _expand_call(
     chain: tuple[str, ...],
     caller: str,
     report: ResolveReport,
+    is_library: Callable[[str], bool],
 ) -> CallBot:
     """Decide o estado de uma chamada, na ordem de precedência da §8."""
     if paths.is_dynamic(call.target_path):
@@ -155,6 +167,13 @@ def _expand_call(
         return replace(call, state=CallState.DYNAMIC_TARGET, body=())
 
     alvo = paths.normalize(call.target_path)
+
+    # Biblioteca vem antes de "não encontrado": utilitário que ficou de fora
+    # do export é biblioteca mesmo assim, não erro. Sem isso, cada chamada a
+    # um utilitário viraria um alarme falso nas pendências.
+    if is_library(alvo):
+        report.libraries.add(alvo)
+        return replace(call, state=CallState.LIBRARY, body=())
 
     if alvo in chain:
         report.cycles.add(alvo)
@@ -177,5 +196,6 @@ def _expand_call(
         chain=chain + (alvo,),
         caller=chamado.path,
         report=report,
+        is_library=is_library,
     )
     return replace(call, state=CallState.EXPANDED, body=corpo)

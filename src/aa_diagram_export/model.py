@@ -108,6 +108,23 @@ class CallState(StrEnum):
     CYCLE = "cycle"
     DEPTH_LIMIT = "depth_limit"
     DYNAMIC_TARGET = "dynamic_target"
+    LIBRARY = "library"
+
+
+@dataclass(frozen=True)
+class CallBinding:
+    """Uma ligação entre um parâmetro do bot chamado e uma variável do chamador.
+
+    O nome é "ligação", e não "argumento", de propósito: aqui não existe
+    argumento no sentido de valor. Só entram o nome do parâmetro, o tipo e o
+    nome da variável ligada a ele — o valor passado é uma expressão que pode
+    carregar literal, e literal não vai para arquivo versionado (§9).
+    """
+
+    name: str
+    type: str = ""
+    is_output: bool = False
+    bound_to: str | None = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +134,7 @@ class CallBot(Node):
     target_path: str = ""
     state: CallState = CallState.UNRESOLVED
     body: tuple[Node, ...] = ()
+    bindings: tuple[CallBinding, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,19 @@
 # para mudar o resultado dos diagramas. Ver §10.2 da spec.
 
 [geral]
+# Até quantos níveis de subtarefa expandir dentro do diagrama de quem chama.
 profundidade_maxima = 3
+
+# Quantos nós cabem num diagrama antes de ele ser quebrado em seções. Acima
+# disso o navegador encolhe o desenho para caber na largura da página e a
+# fonte some. Os bots reais na faixa de 10 a 24 nós leem bem.
+orcamento_de_nos = 30
+
+# Bots utilitários, compartilhados entre processos. São apenas mencionados no
+# fluxo de quem os chama — sem diagrama próprio, fora do grafo e do
+# inventário. Os parâmetros deles continuam na tabela de Chamadas de cada
+# chamador. Aceita prefixo de pasta ou glob.
+bibliotecas = ["CommonTask/**"]
 
 [estilo]
 # Contorno colorido com preenchimento neutro: legível nos temas claro e escuro.
@@ -11,6 +23,8 @@ acoes         = "stroke:#4c6ef5,stroke-width:1px"
 chamada       = "stroke:#2f9e44,stroke-width:2px"
 nao_resolvido = "stroke:#e03131,stroke-width:2px,stroke-dasharray:4 3"
 limite        = "stroke:#862e9c,stroke-width:2px,stroke-dasharray:2 2"
+biblioteca    = "stroke:#1098ad,stroke-width:2px"
+secao         = "stroke:#5f3dc4,stroke-width:2px"
 
 [comandos_amigaveis]
 # "Pacote:Comando" do A360 = rótulo que aparece no diagrama.

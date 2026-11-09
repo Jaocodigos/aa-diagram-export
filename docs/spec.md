@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Projeto | `aa-diagram-export` |
-| Versão desta spec | 0.5 (MVP completo) |
-| Data | 2026-11-05 |
+| Versão desta spec | 0.6 (MVP completo) |
+| Data | 2026-11-09 |
 | Status | Pipeline completo, validado contra um export real. O formato do A360 está documentado na §11. |
 
 ---
@@ -71,6 +71,8 @@ O `index.md` traz o grafo de chamadas (`flowchart LR`, um nó por bot, uma arest
 | Configuração | `dicionario.toml` na raiz, único arquivo que o time edita |
 | Execução | Linha de comando; `.bat` clicável e CI ficam fora do MVP |
 | Dependências | Execução: nenhuma por ora, cada nova com razão registrada. Desenvolvimento: `pytest`, `ruff` |
+| Bibliotecas | Padrões em `dicionario.toml`; o bot é mencionado no fluxo de quem chama, sem página própria (§8.3) |
+| Orçamento de nós | Diagrama acima de 30 nós quebra em seções na mesma página (§8.2) |
 | Orçamento de arestas | Diagrama acima de 480 arestas é refeito com um nível a menos de expansão (§8.1) |
 
 ## 6. Arquitetura
@@ -236,33 +238,60 @@ Rótulo sempre entre aspas duplas. `"` vira `#quot;`, quebra de linha vira `<br/
 Ao encontrar um `Run Task`, na ordem:
 
 1. Alvo dinâmico (vem de variável, com `$` no caminho) → nó não resolvido com nota de alvo dinâmico. Não dá pra resolver estaticamente.
-2. Alvo já presente na cadeia de chamadas atual → nó de ciclo, não expande.
-3. Não encontrado no inventário → nó não resolvido, pendência registrada, segue.
-4. Profundidade já aplicada ≥ `--max-depth` → nó de limite, não expande.
-5. Caso contrário → expande o corpo dentro de um `subgraph`.
+2. Alvo casa com um padrão de `bibliotecas` → nó de biblioteca, mencionado e não expandido (§8.3). Vem antes de "não encontrado" de propósito: utilitário que ficou de fora do export é biblioteca mesmo assim, não erro.
+3. Alvo já presente na cadeia de chamadas atual → nó de ciclo, não expande.
+4. Não encontrado no inventário → nó não resolvido, pendência registrada, segue.
+5. Profundidade já aplicada ≥ `--max-depth` → nó de limite, não expande.
+6. Caso contrário → expande o corpo dentro de um `subgraph`.
 
 A comparação de caminhos é o ponto delicado, porque o export escreve o mesmo bot de duas formas (§11.2). Ela mora inteira em `paths.normalize`.
-
-A expansão inline não impede o bot chamado de ter o seu próprio `.md`: todo bot do export ganha um arquivo, chamado por alguém ou não.
 
 ### 8.1 Orçamento de arestas
 
 **O Mermaid recusa diagrama com mais de 500 arestas.** `maxEdges` é configuração segura, que não pode ser elevada de dentro do arquivo, e o GitHub renderiza com o padrão. Passar de 500 não degrada o diagrama: ele simplesmente não aparece.
 
-Isso não é hipotético. No primeiro export real processado, o bot orquestrador do processo dá:
+Isso não é hipotético. No primeiro export real processado, o bot orquestrador do processo dava 592 arestas em profundidade 2, contra 376 em profundidade 1 e 76 sem expansão nenhuma.
 
-| Profundidade | Arestas |
+Por isso o gerador trata profundidade como teto, não como ordem: desenha, conta as arestas e, passando de 480, refaz com um nível a menos até caber. A página do bot diz até onde expandiu e por quê, e o `index.md` lista os bots reduzidos.
+
+Um bot que sozinho passe do limite, já sem expansão, sai mesmo assim, com um aviso na página de que pode não renderizar. Entregar o diagrama com aviso é melhor que não entregar.
+
+### 8.2 Quebra em seções
+
+Arestas são o limite do Mermaid. Legibilidade é outro, bem mais baixo, e não tem nada a ver com o renderizador: o navegador encaixa o SVG na largura da coluna — cerca de 870 px no GitHub — e escala o desenho inteiro junto. Altura não incomoda, a página rola. Largura, sim: um diagrama que nasce com 3000 px chega a 29% do tamanho, e a fonte de 16 px vira 4,6 px.
+
+Disso vem uma consequência contraintuitiva que vale registrar, porque é a primeira ideia que ocorre: **aumentar a fonte não resolve**. Letra maior deixa cada caixa maior, o desenho fica mais largo e o navegador reduz mais. Dá na mesma.
+
+O que funciona é reduzir o conteúdo por desenho. Passando de `orcamento_de_nos` (padrão 30), os `Step` maiores saem do diagrama principal e viram seções da mesma página, cada uma com o seu diagrama. O `Step` é a costura natural: é o agrupador que o próprio dev criou no A360, tem título, e tirar um da vista não altera o fluxo, só esconde o miolo.
+
+A escolha é gulosa — tira o maior `Step` ainda desenhado por inteiro, redesenha, repete até caber. Três detalhes que importam:
+
+- Só entram os `Step` mais rasos de cada ramo. Tirar um que está dentro de outro que continua no desenho deixaria uma seção fora do caminho de leitura.
+- `Step` com menos de 4 nós não é candidato: a página ganharia um salto de navegação para economizar quase nada.
+- Seção que continua passando do orçamento é quebrada de novo. Bot sem `Step` nenhum não tem onde cortar e sai inteiro.
+
+Medido no export real, no bot orquestrador:
+
+| | Nós |
 |---|---|
-| 0 | 76 |
-| 1 | 376 |
-| 2 | 592 — não renderiza |
-| 3 | 592 — não renderiza |
+| antes, com tudo expandido | 263 |
+| só com as bibliotecas mencionadas | 76 |
+| panorama, depois da quebra | 30 |
+| as quatro seções | 21, 22, 24 e 12 |
 
-Ou seja, a profundidade padrão 3 produziria, justamente para o bot mais importante do export, um arquivo que ninguém consegue ver.
+**A navegação é por link Markdown, não por clique no nó.** O `securityLevel` padrão do Mermaid é `strict`, que desativa `click`, e é configuração segura: como o `maxEdges`, não pode ser mudada de dentro do diagrama, e o GitHub usa o padrão. Então a página escreve os atalhos em Markdown logo abaixo do panorama, e cada seção recebe uma âncora `<a id>` explícita — derivada do uid e não do título, porque dois `Step` podem ter o mesmo nome e cada plataforma monta o slug de um cabeçalho de um jeito. O `click` é emitido junto, como bônus para quem abrir fora do GitHub.
 
-Por isso o gerador trata profundidade como teto, não como ordem: desenha, conta as arestas e, passando de 480, refaz com um nível a menos até caber. A página do bot diz até onde expandiu e por quê, e o `index.md` lista os bots reduzidos. Nada se perde, porque cada bot chamado tem o diagrama próprio — só deixa de estar tudo no mesmo desenho.
+A quebra é só apresentação: o modelo não sabe que seção existe. O render recebe um mapa de "este `Step` vira referência" e o resto segue igual, o que mantém a porta do DrawIO aberta.
 
-Um bot que sozinho passe do limite, já sem expansão nenhuma, sai mesmo assim, com um aviso na página de que pode não renderizar. Entregar o diagrama com aviso é melhor que não entregar.
+### 8.3 Bibliotecas
+
+Bot que casa com um padrão de `[geral] bibliotecas` é utilitário compartilhado, não um passo do processo. Ele aparece **mencionado** no fluxo de quem chama, com forma e cor próprias, mas não é expandido, não ganha página e fica fora do grafo de chamadas e do inventário. Os parâmetros dele continuam registrados na tabela de Chamadas de cada chamador (§9.1).
+
+No export real, 8 dos 10 bots eram utilitários de `CommonTask`: sem isso, o índice e os diagramas dos processos ficavam dominados por infraestrutura.
+
+O padrão vive no `dicionario.toml` e não no código porque cada repositório tem a sua convenção de pastas. Bibliotecas continuam sendo lidas e entram no inventário interno — é dali que sai o tipo declarado de cada parâmetro, e é isso que impede um utilitário de ser confundido com bot ausente.
+
+A expansão inline não impede o bot chamado de ter o seu próprio `.md`: todo bot do export que não seja biblioteca ganha um arquivo, chamado por alguém ou não.
 
 ## 9. Rótulos e dado sensível
 
@@ -271,6 +300,19 @@ Nenhum valor literal de parâmetro entra no diagrama. A regra é estrutural, nã
 Condições de `If` e expressões de `Loop` aparecem **por nome de variável**: `Se: valor divergente` ou `Loop: para cada linha de dtExtrato`, não `Se: valor > 10000`.
 
 Comentários (`Comment`) do A360 são absorvidos como rótulo do bloco de ações seguinte, quando esse bloco não tiver label próprio.
+
+
+### 9.1 A tabela de Chamadas
+
+Cada página lista, numa tabela, o que o bot troca com cada bot chamado: nome do parâmetro, tipo, direção e a variável do chamador ligada a ele.
+
+O valor passado nunca entra. Numa entrada ele é uma expressão que pode carregar literal — `$ReturnPadhy{"BancoDeDados.ObterFila"}$`, por exemplo —, então só o nome da variável é extraído dela. Quando a entrada é um literal puro, a coluna mostra `⋯`.
+
+O tipo vem das variáveis declaradas no bot chamado, não do ponto de chamada, porque numa saída o tipo no ponto de chamada é sempre `VARIABLE`.
+
+A tabela importa mais para as bibliotecas: como elas não têm página própria (§8.3), ela é o único registro de que parâmetros cada utilitário recebe e devolve.
+
+No modelo isso é `CallBinding`, com os campos `name`, `type`, `is_output` e `bound_to`. O nome é "ligação" e não "argumento" de propósito: aqui não existe argumento no sentido de valor. O campo chamava-se `args` numa primeira versão e a guarda de teste da §9 recusou — corretamente, porque o nome sugeria o que o campo não pode carregar.
 
 ## 10. Execução, configuração e layout
 
@@ -299,27 +341,28 @@ O que precisa continuar simples é a instalação na máquina de quem só gera d
 ```toml
 [geral]
 profundidade_maxima = 3
+orcamento_de_nos = 30
+bibliotecas = ["CommonTask/**"]
 
 [estilo]
 # contorno colorido com preenchimento neutro: legível nos temas claro e escuro
 controle      = "stroke:#b26a00,stroke-width:2px"
 acoes         = "stroke:#4c6ef5,stroke-width:1px"
-chamada       = "stroke:#2f9e44,stroke-width:2px"
+biblioteca    = "stroke:#1098ad,stroke-width:2px"
+secao         = "stroke:#5f3dc4,stroke-width:2px"
 nao_resolvido = "stroke:#e03131,stroke-width:2px,stroke-dasharray:4 3"
-limite        = "stroke:#862e9c,stroke-width:2px,stroke-dasharray:2 2"
 
 [comandos_amigaveis]
 # "Pacote:Comando" do A360 = rótulo que aparece no diagrama
 "Database:connect"       = "Banco: conectar"
 "Excel:OpenSpreadsheet"  = "Excel: abrir planilha"
-"String:assign"          = "Texto: atribuir"
 ```
 
-Comando sem entrada em `comandos_amigaveis` cai para o nome cru do A360 e é listado nas pendências do `index.md`, para o time ir preenchendo conforme aparecem. O arquivo versionado já vem com os comandos do primeiro export processado.
+Comando sem entrada em `comandos_amigaveis` cai para o nome cru do A360 e é listado nas pendências do `index.md`. O arquivo versionado já vem com os comandos do primeiro export processado.
 
 Comando dentro de um bloco que o dev nomeou não entra nessa lista: o rótulo do dev substitui os nomes de comando, então não há nada de feio a corrigir ali.
 
-**Não existe opção para "o que conta como estrutura de controle".** `If`, `Loop`, `Try` e `Step` são o que são na linguagem do A360 e o parser os reconhece pelo `commandName`. Uma chave de configuração que não mudasse nada seria pior que chave nenhuma, principalmente para um time que vai confiar no que está escrito no arquivo.
+**Não existe opção para "o que conta como estrutura de controle".** `If`, `Loop`, `Try` e `Step` são o que são na linguagem do A360 e o parser os reconhece pelo `commandName`. Uma chave que não mudasse nada seria pior que chave nenhuma, principalmente para um time que vai confiar no que está escrito no arquivo.
 
 ### 10.3 Layout
 
@@ -336,6 +379,7 @@ src/aa_diagram_export/
   parser.py     JSON do A360 → model
   resolver.py   expande os Run Task, trata ciclo e profundidade
   render.py     model → Mermaid e Markdown
+  layout.py     quebra um bot grande em seções
 tests/
   conftest.py            o mecanismo de snapshot e a flag --regenerar
   example_model.py       bots de exemplo montados à mão
@@ -343,7 +387,8 @@ tests/
   test_resolver.py
   test_paths_config.py    caminhos, dicionário e loader
   test_parser.py          JSON do A360 → modelo
-  test_cli.py             pipeline ponta a ponta e orçamento de arestas
+  test_cli.py             pipeline ponta a ponta, bibliotecas e arestas
+  test_layout.py          quebra em seções
   fixtures/
     esperado/            os .md e .mmd que o render deve produzir
 docs/
@@ -449,6 +494,26 @@ Operadores vistos: `EQ`, `NEQ`, `GT`, `LTE`, `INCLUDE`, `NOTINCLUDE` — sem und
 ### 11.7 Variáveis
 
 Em `variables`, no topo do bot: `name`, `type`, `input`, `output`, `description`, `subtype`, `defaultValue`. Só os quatro primeiros entram no modelo — `defaultValue` carregaria valor literal (§9).
+
+### 11.8 Parâmetros de um Run Task
+
+As entradas vivem em `taskbot.value.taskbotInput.dictionary`, onde a **chave é o nome do parâmetro no bot chamado** e o valor é a expressão passada:
+
+```json
+{"key": "ProcedureNome",
+ "value": {"type": "STRING", "expression": "$ReturnPadhy{\"BancoDeDados.ObterFila\"}$"}}
+```
+
+As saídas vivem em `returnTo` no próprio nó, mapeando a saída do chamado para a variável do chamador:
+
+```json
+{"key": "EncontrouRegistros",
+ "value": {"type": "VARIABLE", "variableName": "EncontrouRegistros"}}
+```
+
+Não existe `taskbotOutput`. Dos 20 `runTask` do export, 9 tinham saída mapeada.
+
+Os dois lados são nome de variável, então cabem na §9 sem exceção. O tipo real vem das variáveis declaradas no bot chamado: no ponto de chamada, a saída aparece sempre como `VARIABLE`.
 
 ## 12. Critérios de aceite do MVP
 

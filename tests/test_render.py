@@ -193,3 +193,14 @@ def test_modelo_nao_tem_campo_de_valor_literal():
 def test_bloco_de_acoes_so_guarda_nome_de_comando():
     campos = {campo.name for campo in dataclasses.fields(model.ActionBlock)}
     assert campos == {"uid", "commands", "label"}
+
+
+def test_ligacao_de_chamada_so_guarda_nome_tipo_e_variavel():
+    """O parâmetro de uma chamada não carrega o valor passado (§9).
+
+    O campo se chama `bindings`, e não `args`, justamente porque aqui não
+    existe argumento no sentido de valor — só o nome do parâmetro e o nome
+    da variável ligada a ele.
+    """
+    campos = {campo.name for campo in dataclasses.fields(model.CallBinding)}
+    assert campos == {"name", "type", "is_output", "bound_to"}

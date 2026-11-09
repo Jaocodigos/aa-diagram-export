@@ -12,6 +12,7 @@ monta a sequência é que liga as pontas.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
@@ -32,7 +33,12 @@ from .model import (
     action_count,
     called_bots,
     stable_node_id,
+    walk,
 )
+
+#: Linha de declaração de nó, para contá-los. Não casa com `subgraph`, que
+#: começa pela palavra, nem com aresta, que tem o id depois da seta.
+_DECLARACAO = re.compile(r"\s+n[0-9a-f]{8}[\[({]")
 
 LIMITE_ROTULO = 60
 MAX_COMANDOS_NO_ROTULO = 3
@@ -74,6 +80,12 @@ class _Canvas:
     edges: list[str] = field(default_factory=list)
     classes: dict[str, list[str]] = field(default_factory=dict)
     unknown_commands: set[str] = field(default_factory=set)
+    externalize: dict[str, str] = field(default_factory=dict)
+    # O GitHub renderiza Mermaid com securityLevel "strict", que desliga o
+    # clique e não pode ser mudado de dentro do diagrama. Estas linhas são
+    # bônus para quem abrir noutro visualizador; a navegação confiável são
+    # os links Markdown que a página escreve abaixo do desenho.
+    clicks: list[str] = field(default_factory=list)
 
     # --- infraestrutura ---
 
@@ -247,6 +259,14 @@ class _Canvas:
         return try_entrada, try_saidas + catch_saidas
 
     def _step(self, n: Step) -> tuple[str, list[Saida]]:
+        ancora = self.externalize.get(n.uid)
+        if ancora is not None:
+            nid = stable_node_id(f"{n.uid}:ref")
+            self.decls.append(f'  {nid}[["{escape(n.title or "Passo")}"]]')
+            self.classify(nid, "secao")
+            self.clicks.append(f'  click {nid} "#{ancora}"')
+            return nid, [(nid, None)]
+
         sid = stable_node_id(f"{n.uid}:step")
         self.decls.append(f'  subgraph {sid}["{escape(n.title or "Step")}"]')
         entrada, saidas = self.sequence(n.body)
@@ -269,6 +289,11 @@ class _Canvas:
                     )
                 self.decls.append("  end")
                 return entrada, saidas
+            case CallState.LIBRARY:
+                # Utilitário compartilhado: aparece mencionado no fluxo de
+                # quem chama, mas não tem página nem é expandido.
+                self.decls.append(f'  {nid}[["{escape(n.target_path)}"]]')
+                self.classify(nid, "biblioteca")
             case CallState.CYCLE:
                 texto = f"recursão: {n.target_path}"
                 self.decls.append(f'  {nid}[["{escape(texto)}"]]')
@@ -321,21 +346,76 @@ class Diagram:
     mermaid: str
     unknown_commands: frozenset[str]
     edge_count: int
+    node_count: int = 0
 
     @property
     def too_big(self) -> bool:
         return self.edge_count > LIMITE_DE_ARESTAS
 
 
-def bot_diagram(bot: Bot, dic: Dictionary) -> Diagram:
-    """Diagrama de fluxo de um bot."""
-    canvas = _Canvas(dic=dic)
-    inicio = stable_node_id(f"{bot.path}:inicio")
-    fim = stable_node_id(f"{bot.path}:fim")
+@dataclass(frozen=True)
+class Section:
+    """Um `Step` que saiu do diagrama principal e virou seção da página."""
 
-    canvas.decls.append(f'  {inicio}(["{escape(f"Início: {bot.name}")}"])')
-    entrada, saidas = canvas.sequence(bot.body)
-    canvas.decls.append(f'  {fim}(["Fim"])')
+    anchor: str
+    title: str
+    diagram: Diagram
+
+
+def bot_diagram(
+    bot: Bot,
+    dic: Dictionary,
+    *,
+    externalize: dict[str, str] | None = None,
+) -> Diagram:
+    """Diagrama de fluxo de um bot.
+
+    `externalize` mapeia o uid de um `Step` para a âncora da seção que o
+    detalha. Esses Steps viram um nó só, que aponta para a seção, em vez de
+    serem desenhados por inteiro — é assim que um bot grande é quebrado sem
+    o modelo saber nada sobre isso.
+    """
+    canvas = _Canvas(dic=dic, externalize=dict(externalize or {}))
+    return _montar(
+        canvas,
+        semente=bot.path,
+        rotulo_inicio=f"Início: {bot.name}",
+        rotulo_fim="Fim",
+        corpo=bot.body,
+    )
+
+
+def section_diagram(
+    step: Step,
+    dic: Dictionary,
+    *,
+    externalize: dict[str, str] | None = None,
+) -> Diagram:
+    """Diagrama de uma seção: o miolo de um `Step` que saiu do desenho maior."""
+    canvas = _Canvas(dic=dic, externalize=dict(externalize or {}))
+    return _montar(
+        canvas,
+        semente=f"{step.uid}:secao",
+        rotulo_inicio=step.title or "Passo",
+        rotulo_fim="fim do passo",
+        corpo=step.body,
+    )
+
+
+def _montar(
+    canvas: _Canvas,
+    *,
+    semente: str,
+    rotulo_inicio: str,
+    rotulo_fim: str,
+    corpo: tuple[Node, ...],
+) -> Diagram:
+    inicio = stable_node_id(f"{semente}:inicio")
+    fim = stable_node_id(f"{semente}:fim")
+
+    canvas.decls.append(f'  {inicio}(["{escape(rotulo_inicio)}"])')
+    entrada, saidas = canvas.sequence(corpo)
+    canvas.decls.append(f'  {fim}(["{escape(rotulo_fim)}"])')
 
     if entrada is None:
         canvas.edges.append(f"  {inicio} --> {fim}")
@@ -343,15 +423,27 @@ def bot_diagram(bot: Bot, dic: Dictionary) -> Diagram:
         canvas.edges.append(f"  {inicio} --> {entrada}")
         canvas.link(saidas, fim)
 
-    linhas = ["flowchart TD", *canvas.decls, *canvas.edges, *canvas.class_lines()]
+    linhas = [
+        "flowchart TD",
+        *canvas.decls,
+        *canvas.edges,
+        *canvas.class_lines(),
+        *canvas.clicks,
+    ]
     return Diagram(
         mermaid="\n".join(linhas),
         unknown_commands=frozenset(canvas.unknown_commands),
         edge_count=len(canvas.edges),
+        node_count=sum(1 for linha in canvas.decls if _DECLARACAO.match(linha)),
     )
 
 
-def call_graph(bots: list[Bot], dic: Dictionary) -> str:
+def call_graph(
+    bots: list[Bot],
+    dic: Dictionary,
+    *,
+    skip: set[str] | None = None,
+) -> str:
     """Grafo de chamadas entre bots, para o index.md.
 
     Espera os bots como saíram do parser, antes da expansão do resolver. Com
@@ -365,12 +457,15 @@ def call_graph(bots: list[Bot], dic: Dictionary) -> str:
             ids[caminho] = stable_node_id(f"bot:{caminho}")
         return ids[caminho]
 
+    ignorados = skip or set()
     conhecidos = {bot.path for bot in bots}
     arestas: list[str] = []
     externos: set[str] = set()
 
     for bot in bots:
         for alvo in called_bots(bot):
+            if alvo in ignorados:
+                continue
             if alvo not in conhecidos:
                 externos.add(alvo)
             aresta = f"  {nid(bot.path)} --> {nid(alvo)}"
@@ -412,6 +507,8 @@ def bot_page(
     diagram: Diagram,
     depth_used: int,
     depth_requested: int | None = None,
+    sections: tuple[Section, ...] = (),
+    inventory: dict[str, Bot] | None = None,
 ) -> str:
     """Página Markdown de um bot (§4)."""
     chamados = called_bots(bot)
@@ -448,6 +545,13 @@ def bot_page(
         "",
     ]
 
+    if sections:
+        atalhos = " · ".join(f"[{s.title}](#{s.anchor})" for s in sections)
+        linhas += [
+            f"Passos detalhados neste bot: {atalhos}",
+            "",
+        ]
+
     if bot.variables:
         linhas += ["## Variáveis", "", "| Nome | Tipo | Entrada | Saída |", "|---|---|---|---|"]
         for v in bot.variables:
@@ -456,6 +560,8 @@ def bot_page(
                 f"| {'sim' if v.is_output else '—'} |"
             )
         linhas.append("")
+
+    linhas += _tabela_de_chamadas(bot, inventory)
 
     linhas += ["## Dependências", ""]
     if chamados:
@@ -470,7 +576,86 @@ def bot_page(
         linhas.append("Pacotes usados: " + ", ".join(f"`{p}`" for p in bot.packages))
         linhas.append("")
 
+    for secao in sections:
+        linhas += [
+            # Âncora explícita em vez de confiar no slug que o renderizador
+            # gera do título: dois Steps podem ter o mesmo nome, e cada
+            # plataforma monta o slug de um jeito.
+            f'<a id="{secao.anchor}"></a>',
+            "",
+            f"## {secao.title}",
+            "",
+            "```mermaid",
+            secao.diagram.mermaid,
+            "```",
+            "",
+        ]
+
     return "\n".join(linhas)
+
+
+def _tabela_de_chamadas(bot: Bot, inventory: dict[str, Bot] | None) -> list[str]:
+    """Entradas e saídas de cada chamada a outro bot.
+
+    Vale principalmente para as bibliotecas: como elas não ganham página
+    própria, esta tabela é o único lugar que registra o que cada utilitário
+    recebe e devolve.
+    """
+    chamadas = [n for n in walk(bot.body) if isinstance(n, CallBot)]
+    if not chamadas:
+        return []
+
+    linhas = [
+        "## Chamadas",
+        "",
+        "Nome e tipo dos parâmetros. O valor passado não aparece: numa entrada "
+        "ele é uma expressão que pode carregar literal (§9).",
+        "",
+        "| Bot | Direção | Parâmetro | Tipo | Variável no chamador |",
+        "|---|---|---|---|---|",
+    ]
+
+    for chamada in chamadas:
+        alvo = chamada.target_path or "—"
+        if not chamada.bindings:
+            linhas.append(f"| `{alvo}` | — | — | — | — |")
+            continue
+        for posicao, ligacao in enumerate(chamada.bindings):
+            tipo = (
+                _tipo_declarado(inventory, chamada.target_path, ligacao.name)
+                or ligacao.type
+                or "—"
+            )
+            ligado = ligacao.bound_to
+            if not ligado:
+                ligado = "—"
+            elif ligado != "⋯":
+                ligado = f"`{ligado}`"
+            linhas.append(
+                f"| {f'`{alvo}`' if posicao == 0 else ''} "
+                f"| {'saída' if ligacao.is_output else 'entrada'} "
+                f"| `{ligacao.name}` | {tipo} | {ligado} |"
+            )
+
+    linhas.append("")
+    return linhas
+
+
+def _tipo_declarado(
+    inventory: dict[str, Bot] | None, alvo: str, nome: str
+) -> str:
+    """Tipo que o bot chamado declara para esse parâmetro.
+
+    Mais confiável que o tipo visto no ponto de chamada, que nas saídas é
+    sempre `VARIABLE`.
+    """
+    chamado = (inventory or {}).get(alvo)
+    if chamado is None:
+        return ""
+    for variavel in chamado.variables:
+        if variavel.name == nome:
+            return variavel.type
+    return ""
 
 
 def index_page(
@@ -482,10 +667,12 @@ def index_page(
     ignored_files: int = 0,
     include_call_graph: bool = True,
     depth_reduced: dict[str, tuple[int, int]] | None = None,
+    libraries: set[str] | None = None,
 ) -> str:
     """Página de entrada: grafo de chamadas, inventário e pendências (§4)."""
     unresolved = unresolved or {}
     unknown_commands = unknown_commands or set()
+    libraries = libraries or set()
 
     linhas = [
         "# Diagramas dos bots",
@@ -494,12 +681,22 @@ def index_page(
         "",
     ]
 
+    if libraries:
+        padroes = ", ".join(f"`{p}`" for p in dic.libraries) or "configurados"
+        linhas += [
+            f"Outros {len(libraries)} bot(s) casam com os padrões de biblioteca "
+            f"({padroes}): aparecem mencionados nos fluxos de quem os chama, "
+            "com os parâmetros na tabela de Chamadas de cada página, mas não "
+            "têm diagrama próprio.",
+            "",
+        ]
+
     if include_call_graph:
         linhas += [
             "## Grafo de chamadas",
             "",
             "```mermaid",
-            call_graph(bots, dic),
+            call_graph(bots, dic, skip=libraries),
             "```",
             "",
         ]

@@ -10,9 +10,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
-from . import config, loader, render, resolver
+from . import config, layout, loader, render, resolver
 from .model import Bot
 from .parser import parse_bot
 
@@ -49,6 +50,14 @@ def build_argparser() -> argparse.ArgumentParser:
         help="profundidade de expansão das subtarefas (padrão: dicionario.toml)",
     )
     cli.add_argument(
+        "--node-budget",
+        type=int,
+        default=None,
+        metavar="N",
+        help="quantos nós cabem num diagrama antes de quebrá-lo em seções "
+        "(padrão: dicionario.toml)",
+    )
+    cli.add_argument(
         "--dicionario",
         type=Path,
         default=None,
@@ -69,27 +78,33 @@ def build_argparser() -> argparse.ArgumentParser:
     return cli
 
 
-def _desenhar_dentro_do_limite(
+def _expandir_dentro_do_limite(
     bot: Bot,
     inventario: dict[str, Bot],
     dic: config.Dictionary,
     profundidade: int,
-) -> tuple[render.Diagram, resolver.ResolveReport, int]:
-    """Desenha o bot na maior profundidade que ainda renderiza.
+) -> tuple[Bot, resolver.ResolveReport, int]:
+    """Expande o bot na maior profundidade que ainda renderiza.
 
     O Mermaid recusa diagrama com mais de 500 arestas e o GitHub usa esse
     padrão, então expandir demais produz um arquivo que não aparece para
-    ninguém. Em vez de entregar isso, o diagrama é refeito com um nível a
-    menos até caber, e a página diz que foi reduzida.
+    ninguém. Em vez de entregar isso, a expansão cede um nível até caber, e a
+    página diz que foi reduzida.
+
+    Isto é o teto do que o Mermaid aceita. A legibilidade é outro limite, bem
+    mais baixo, e quem cuida dela é a quebra em seções do `layout`.
     """
     for tentativa in range(profundidade, -1, -1):
         parcial = resolver.ResolveReport()
         expandido, _ = resolver.expand(
-            bot, inventario, max_depth=tentativa, report=parcial
+            bot,
+            inventario,
+            max_depth=tentativa,
+            report=parcial,
+            is_library=dic.is_library,
         )
-        diagrama = render.bot_diagram(expandido, dic)
-        if not diagrama.too_big or tentativa == 0:
-            return diagrama, parcial, tentativa
+        if not render.bot_diagram(expandido, dic).too_big or tentativa == 0:
+            return expandido, parcial, tentativa
     raise AssertionError("inalcançável: o laço sempre retorna em tentativa == 0")
 
 
@@ -107,6 +122,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     profundidade = args.max_depth if args.max_depth is not None else dic.max_depth
+    if args.node_budget is not None:
+        dic = replace(dic, node_budget=args.node_budget)
 
     try:
         export = loader.load_export(args.input)
@@ -126,38 +143,66 @@ def main(argv: list[str] | None = None) -> int:
         aviso("nenhum bot encontrado no export.")
         return 1
 
+    # O inventário leva todos os bots, inclusive as bibliotecas: é dele que
+    # sai o tipo declarado de cada parâmetro na tabela de chamadas, e é ele
+    # que impede um utilitário de ser confundido com bot ausente.
     inventario = resolver.build_inventory(bots)
+    bibliotecas = {b.path for b in bots if dic.is_library(b.path)}
+    documentados = [b for b in sorted(bots, key=lambda b: b.path) if b.path not in bibliotecas]
+
+    if not documentados:
+        aviso("todos os bots do export casaram com os padrões de biblioteca.")
+        return 1
+
     relatorio = resolver.ResolveReport()
     desconhecidos: set[str] = set()
     reduzidos: dict[str, tuple[int, int]] = {}
     paginas: dict[str, str] = {}
 
-    for bot in sorted(bots, key=lambda b: b.path):
-        diagrama, parcial, usada = _desenhar_dentro_do_limite(
+    for bot in documentados:
+        expandido, parcial, usada = _expandir_dentro_do_limite(
             bot, inventario, dic, profundidade
         )
         relatorio.merge(parcial)
-        desconhecidos |= set(diagrama.unknown_commands)
+
+        desenho = layout.split_bot(expandido, dic)
+        desconhecidos |= set(desenho.diagram.unknown_commands)
+        for secao in desenho.sections:
+            desconhecidos |= set(secao.diagram.unknown_commands)
+
         if usada < profundidade:
             reduzidos[bot.path] = (usada, profundidade)
             aviso(
                 f"{bot.path}: expandido até {usada} em vez de {profundidade} "
                 "para caber no limite de arestas do Mermaid"
             )
+        if desenho.sections:
+            aviso(
+                f"{bot.path}: quebrado em {len(desenho.sections)} seção(ões) "
+                f"para caber em {dic.node_budget} nós por diagrama"
+            )
+
         # Os metadados vêm do bot original: a contagem de ações e a lista de
         # bots chamados são dele, não das subtarefas que entraram no desenho.
         paginas[render.page_relpath(bot)] = render.bot_page(
-            bot, dic, diagram=diagrama, depth_used=usada, depth_requested=profundidade
+            bot,
+            dic,
+            diagram=desenho.diagram,
+            sections=desenho.sections,
+            depth_used=usada,
+            depth_requested=profundidade,
+            inventory=inventario,
         )
 
     paginas["index.md"] = render.index_page(
-        sorted(bots, key=lambda b: b.path),
+        documentados,
         dic,
         unresolved=relatorio.as_lists(),
         unknown_commands=desconhecidos,
         ignored_files=ignorados,
         include_call_graph=not args.no_call_graph,
         depth_reduced=reduzidos,
+        libraries=bibliotecas,
     )
 
     for relativo, conteudo in sorted(paginas.items()):

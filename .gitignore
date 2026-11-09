@@ -7,3 +7,6 @@ __pycache__/
 
 # Exports do Control Room: grandes e não versionáveis
 *.zip
+
+# Artefato do pip install -e .
+*.egg-info/

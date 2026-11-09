@@ -59,17 +59,40 @@ Não é preciso abrir nenhum `.py`:
   seção de pendências do `index.md`, para o time ir preenchendo.
 - `[estilo]` — as cores de cada tipo de nó.
 - `[geral] profundidade_maxima` — quantos níveis de subtarefa expandir.
+- `[geral] orcamento_de_nos` — quantos nós cabem num diagrama antes de ele ser
+  quebrado em seções.
+- `[geral] bibliotecas` — os bots utilitários, compartilhados entre processos.
 
-## Um limite que vale conhecer
+## Bibliotecas
 
-O Mermaid recusa diagrama com mais de 500 arestas, e o GitHub usa essa
-configuração padrão — não dá para elevar o limite de dentro do arquivo. Um bot
-orquestrador com várias subtarefas expandidas passa disso com facilidade.
+Bot que casa com um padrão de `[geral] bibliotecas` é tratado como utilitário:
+aparece **mencionado** no fluxo de quem o chama, mas não ganha diagrama
+próprio, nem entra no grafo de chamadas ou no inventário. Os parâmetros dele
+continuam registrados na tabela de **Chamadas** de cada chamador.
 
-Quando isso acontece, o gerador refaz o diagrama com um nível a menos de
-expansão, até caber, e escreve na página do bot que reduziu. Cada bot chamado
-continua tendo o diagrama próprio, então nada se perde — só deixa de estar
-tudo no mesmo desenho.
+Num export real, oito de dez bots eram utilitários de `CommonTask`. Sem isso,
+o índice e os diagramas dos processos ficavam dominados por infraestrutura.
+
+O padrão fica no `dicionario.toml` e não no código porque cada repositório tem
+a sua convenção de pastas — `CommonTask` aqui pode ser `Shared` noutro.
+
+## Dois limites que valem conhecer
+
+**Arestas.** O Mermaid recusa diagrama com mais de 500 arestas e o GitHub usa
+essa configuração padrão, que não dá para elevar de dentro do arquivo. Quando
+um bot passa disso, o gerador refaz com um nível a menos de expansão até
+caber, e escreve na página que reduziu.
+
+**Legibilidade.** Esse é um limite bem mais baixo, e não tem nada a ver com o
+Mermaid: o navegador encolhe o desenho para caber na largura da página, então
+diagrama grande não vira diagrama grande, vira diagrama ilegível. Passando do
+`orcamento_de_nos`, os `Step` maiores saem do desenho principal e viram seções
+da mesma página, com um atalho em Markdown logo abaixo do panorama.
+
+Os nós de seção também trazem um `click` do Mermaid, mas ele é só bônus para
+quem abrir fora do GitHub: o `securityLevel` padrão é `strict`, que desliga o
+clique e, como o `maxEdges`, não pode ser mudado de dentro do diagrama. A
+navegação confiável são os links Markdown.
 
 ## Desenvolvimento
 

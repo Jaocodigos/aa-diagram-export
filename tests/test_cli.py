@@ -93,16 +93,15 @@ def test_entrada_inexistente_sai_com_erro(tmp_path, capsys):
 
 
 def test_reduz_profundidade_para_caber_no_mermaid(monkeypatch):
-    """O Mermaid recusa mais de 500 arestas, então o render cede profundidade.
+    """O Mermaid recusa mais de 500 arestas, então a expansão cede nível.
 
     Entregar o diagrama completo seria entregar um arquivo que não aparece
     para ninguém no GitHub.
     """
     monkeypatch.setattr(render, "LIMITE_DE_ARESTAS", 3)
-    bots = [bot_principal(), bot_relatorio()]
-    inventario = resolver.build_inventory(bots)
+    inventario = resolver.build_inventory([bot_principal(), bot_relatorio()])
 
-    diagrama, _, usada = cli._desenhar_dentro_do_limite(
+    _, _, usada = cli._expandir_dentro_do_limite(
         bot_principal(), inventario, config.Dictionary(), 3
     )
     assert usada < 3
@@ -110,10 +109,9 @@ def test_reduz_profundidade_para_caber_no_mermaid(monkeypatch):
 
 def test_nao_reduz_quando_cabe(monkeypatch):
     monkeypatch.setattr(render, "LIMITE_DE_ARESTAS", 10_000)
-    bots = [bot_principal(), bot_relatorio()]
-    inventario = resolver.build_inventory(bots)
+    inventario = resolver.build_inventory([bot_principal(), bot_relatorio()])
 
-    _, _, usada = cli._desenhar_dentro_do_limite(
+    _, _, usada = cli._expandir_dentro_do_limite(
         bot_principal(), inventario, config.Dictionary(), 3
     )
     assert usada == 3
@@ -123,9 +121,65 @@ def test_profundidade_zero_sempre_entrega_algo(monkeypatch):
     """Mesmo um bot sozinho grande demais sai com diagrama, mais o aviso."""
     monkeypatch.setattr(render, "LIMITE_DE_ARESTAS", 0)
     inventario = resolver.build_inventory([bot_principal()])
-    diagrama, _, usada = cli._desenhar_dentro_do_limite(
+    expandido, _, usada = cli._expandir_dentro_do_limite(
         bot_principal(), inventario, config.Dictionary(), 3
     )
     assert usada == 0
-    assert diagrama.mermaid.startswith("flowchart TD")
-    assert diagrama.too_big
+    desenho = render.bot_diagram(expandido, config.Dictionary())
+    assert desenho.mermaid.startswith("flowchart TD")
+    assert desenho.too_big
+
+
+# --- bibliotecas ---
+
+
+def _dicionario_com_biblioteca(tmp_path: Path) -> Path:
+    caminho = tmp_path / "dic.toml"
+    caminho.write_text(
+        '[geral]\nbibliotecas = ["Comum/**"]\n', encoding="utf-8"
+    )
+    return caminho
+
+
+def test_biblioteca_nao_ganha_pagina_mas_e_mencionada(tmp_path):
+    saida = tmp_path / "docs"
+    codigo = cli.main([
+        "--input", str(_export(tmp_path)),
+        "--out", str(saida),
+        "--dicionario", str(_dicionario_com_biblioteca(tmp_path)),
+        "--quiet",
+    ])
+    assert codigo == 0
+
+    assert not (saida / "bots" / "Comum" / "Enviar.md").exists()
+    assert (saida / "bots" / "Processos" / "Exemplo.md").is_file()
+
+    pagina = (saida / "bots" / "Processos" / "Exemplo.md").read_text(encoding="utf-8")
+    assert "Comum/Enviar" in pagina, "a chamada tem que continuar mencionada no fluxo"
+    assert "Bot: Comum/Enviar" not in pagina, "biblioteca não pode ser expandida"
+
+    index = (saida / "index.md").read_text(encoding="utf-8")
+    assert "1 bot(s) no export" in index
+    assert "padrões de biblioteca" in index
+
+
+def test_biblioteca_nao_vira_pendencia(tmp_path):
+    """Sem estado próprio, cada chamada a um utilitário viraria alarme falso."""
+    saida = tmp_path / "docs"
+    cli.main([
+        "--input", str(_export(tmp_path)), "--out", str(saida),
+        "--dicionario", str(_dicionario_com_biblioteca(tmp_path)), "--quiet",
+    ])
+    index = (saida / "index.md").read_text(encoding="utf-8")
+    assert "não encontrado" not in index
+
+
+def test_tabela_de_chamadas_traz_parametros(tmp_path):
+    saida = tmp_path / "docs"
+    cli.main([
+        "--input", str(_export(tmp_path)), "--out", str(saida),
+        "--dicionario", str(_dicionario_com_biblioteca(tmp_path)), "--quiet",
+    ])
+    pagina = (saida / "bots" / "Processos" / "Exemplo.md").read_text(encoding="utf-8")
+    assert "## Chamadas" in pagina
+    assert "| Bot | Direção | Parâmetro | Tipo | Variável no chamador |" in pagina
