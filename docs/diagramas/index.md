@@ -17,8 +17,8 @@ flowchart LR
 
 | Bot | Ações | Chama | Diagrama |
 |---|---|---|---|
-| `Processos/Sustentabilidade/P001-Ecobot/P001-ExtraiFaturas` | 34 | 9 | [abrir](bots/Processos/Sustentabilidade/P001-Ecobot/P001-ExtraiFaturas.md) |
-| `Processos/Sustentabilidade/P001-Ecobot/Tarefas/P001_RevisaFilaProcessamento` | 5 | 3 | [abrir](bots/Processos/Sustentabilidade/P001-Ecobot/Tarefas/P001_RevisaFilaProcessamento.md) |
+| `Processos/Sustentabilidade/P001-Ecobot/P001-ExtraiFaturas` | 34 | 9 | [abrir](P001-ExtraiFaturas/README.md) |
+| `Processos/Sustentabilidade/P001-Ecobot/Tarefas/P001_RevisaFilaProcessamento` | 5 | 3 | [abrir](P001_RevisaFilaProcessamento/README.md) |
 
 ## Pendências
 

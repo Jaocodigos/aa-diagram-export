@@ -52,11 +52,11 @@ def test_ponta_a_ponta(tmp_path, capsys):
     assert "Grafo de chamadas" in index
     assert "2 bot(s) no export" in index
 
-    pagina = (saida / "bots" / "Processos" / "Exemplo.md").read_text(encoding="utf-8")
+    pagina = (saida / "Exemplo" / "README.md").read_text(encoding="utf-8")
     assert "```mermaid" in pagina
     # A chamada foi resolvida e expandida, então o bot chamado está no desenho.
     assert "Bot: Comum/Enviar" in pagina
-    assert (saida / "bots" / "Comum" / "Enviar.md").is_file()
+    assert (saida / "Enviar" / "README.md").is_file()
 
 
 def test_rodar_duas_vezes_da_o_mesmo_byte(tmp_path):
@@ -119,16 +119,16 @@ def test_secoes_viram_arquivos_proprios(tmp_path):
         "--node-budget", "6", "--quiet",
     ]) == 0
 
-    pagina = saida / "bots" / "Processos" / "Exemplo.md"
-    secao = saida / "bots" / "Processos" / "Exemplo" / "01-passo-longo.md"
+    pagina = saida / "Exemplo" / "README.md"
+    secao = saida / "Exemplo" / "Subtasks" / "01-passo-longo.md"
     assert pagina.is_file() and secao.is_file()
 
     texto_da_pagina = pagina.read_text(encoding="utf-8")
-    assert "Exemplo/01-passo-longo.md" in texto_da_pagina
+    assert "Subtasks/01-passo-longo.md" in texto_da_pagina
     assert texto_da_pagina.count("```mermaid") == 1
 
     texto_da_secao = secao.read_text(encoding="utf-8")
-    assert "](../Exemplo.md)" in texto_da_secao
+    assert "](../README.md)" in texto_da_secao
     assert texto_da_secao.count("```mermaid") == 1
 
 
@@ -194,10 +194,10 @@ def test_biblioteca_nao_ganha_pagina_mas_e_mencionada(tmp_path):
     ])
     assert codigo == 0
 
-    assert not (saida / "bots" / "Comum" / "Enviar.md").exists()
-    assert (saida / "bots" / "Processos" / "Exemplo.md").is_file()
+    assert not (saida / "Enviar" / "README.md").exists()
+    assert (saida / "Exemplo" / "README.md").is_file()
 
-    pagina = (saida / "bots" / "Processos" / "Exemplo.md").read_text(encoding="utf-8")
+    pagina = (saida / "Exemplo" / "README.md").read_text(encoding="utf-8")
     assert "Comum/Enviar" in pagina, "a chamada tem que continuar mencionada no fluxo"
     assert "Bot: Comum/Enviar" not in pagina, "biblioteca não pode ser expandida"
 
@@ -223,6 +223,6 @@ def test_tabela_de_chamadas_traz_parametros(tmp_path):
         "--input", str(_export(tmp_path)), "--out", str(saida),
         "--dicionario", str(_dicionario_com_biblioteca(tmp_path)), "--quiet",
     ])
-    pagina = (saida / "bots" / "Processos" / "Exemplo.md").read_text(encoding="utf-8")
+    pagina = (saida / "Exemplo" / "README.md").read_text(encoding="utf-8")
     assert "## Chamadas" in pagina
     assert "| Bot | Direção | Parâmetro | Tipo | Variável no chamador |" in pagina

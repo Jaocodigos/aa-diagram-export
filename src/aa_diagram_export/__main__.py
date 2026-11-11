@@ -154,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         aviso("todos os bots do export casaram com os padrões de biblioteca.")
         return 1
 
+    nomes = render.build_naming(documentados)
     relatorio = resolver.ResolveReport()
     desconhecidos: set[str] = set()
     reduzidos: dict[str, tuple[int, int]] = {}
@@ -184,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # Os metadados vêm do bot original: a contagem de ações e a lista de
         # bots chamados são dele, não das subtarefas que entraram no desenho.
-        paginas[render.page_relpath(bot)] = render.bot_page(
+        paginas[nomes.page(bot)] = render.bot_page(
             bot,
             dic,
             diagram=desenho.diagram,
@@ -194,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
             inventory=inventario,
         )
         for posicao, secao in enumerate(desenho.sections):
-            paginas[render.section_relpath(bot, secao)] = render.section_page(
+            paginas[nomes.section(bot, secao)] = render.section_page(
                 secao,
                 bot,
                 previous=desenho.sections[posicao - 1] if posicao else None,
@@ -214,6 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         include_call_graph=not args.no_call_graph,
         depth_reduced=reduzidos,
         libraries=bibliotecas,
+        naming=nomes,
     )
 
     for relativo, conteudo in sorted(paginas.items()):

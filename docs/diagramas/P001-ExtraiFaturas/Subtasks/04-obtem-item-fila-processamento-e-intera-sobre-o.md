@@ -1,6 +1,6 @@
 # Obtem Item Fila Processamento e intera sobre o excel exportado
 
-Passo de [P001-ExtraiFaturas](../P001-ExtraiFaturas.md).
+Passo de [P001-ExtraiFaturas](../README.md).
 
 ```mermaid
 flowchart TD

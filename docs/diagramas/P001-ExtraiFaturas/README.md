@@ -98,18 +98,18 @@ flowchart TD
   class n23f41da0,n42e01098,n7af4c5b3,n82eae53b,nbd6f9525,nde00f30b,ne34af22b controle
   classDef secao stroke:#5f3dc4,stroke-width:2px
   class n48d5ecc3,n86d93f88 secao
-  click n86d93f88 "P001-ExtraiFaturas/01-obter-dados-exportados-python-para-inserir-na.md"
-  click n48d5ecc3 "P001-ExtraiFaturas/03-obter-dados-exportados-python-para-atualizar.md"
+  click n86d93f88 "Subtasks/01-obter-dados-exportados-python-para-inserir-na.md"
+  click n48d5ecc3 "Subtasks/03-obter-dados-exportados-python-para-atualizar.md"
 ```
 
 ## Passos detalhados
 
 | | Passo | Nós |
 |---|---|---|
-| 1 | [Obter Dados Exportados Python Para Inserir na Fila Processamento](P001-ExtraiFaturas/01-obter-dados-exportados-python-para-inserir-na.md) | 21 |
-| 2 | [Faz loop em cada fatura na pasta](P001-ExtraiFaturas/02-faz-loop-em-cada-fatura-na-pasta.md) | 22 |
-| 3 | [Obter Dados Exportados Python Para Atualizar Fila Processamento](P001-ExtraiFaturas/03-obter-dados-exportados-python-para-atualizar.md) | 24 |
-| 4 | [Obtem Item Fila Processamento e intera sobre o excel exportado](P001-ExtraiFaturas/04-obtem-item-fila-processamento-e-intera-sobre-o.md) | 12 |
+| 1 | [Obter Dados Exportados Python Para Inserir na Fila Processamento](Subtasks/01-obter-dados-exportados-python-para-inserir-na.md) | 21 |
+| 2 | [Faz loop em cada fatura na pasta](Subtasks/02-faz-loop-em-cada-fatura-na-pasta.md) | 22 |
+| 3 | [Obter Dados Exportados Python Para Atualizar Fila Processamento](Subtasks/03-obter-dados-exportados-python-para-atualizar.md) | 24 |
+| 4 | [Obtem Item Fila Processamento e intera sobre o excel exportado](Subtasks/04-obtem-item-fila-processamento-e-intera-sobre-o.md) | 12 |
 
 ## Variáveis
 

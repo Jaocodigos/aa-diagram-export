@@ -28,11 +28,11 @@ from dataclasses import dataclass
 from .config import Dictionary
 from .model import Bot, CallBot, If, Loop, Node, Step, TryCatch, walk
 from .render import (
+    PASTA_DE_SUBTASKS,
     Diagram,
     Section,
     bot_diagram,
     section_diagram,
-    sections_dirname,
 )
 
 #: Step menor que isto não vale virar arquivo: a navegação ganharia um salto
@@ -93,12 +93,14 @@ def split_bot(bot: Bot, dic: Dictionary, *, budget: int | None = None) -> Layout
         for posicao, passo in enumerate(todos, 1)
     }
 
-    # Fase 3: desenhar com os links definitivos.
-    pasta = sections_dirname(bot)
+    # Fase 3: desenhar com os links definitivos. A página do bot mora na
+    # pasta dele, então o caminho até um passo é relativo a ela.
     principal = bot_diagram(
         bot,
         dic,
-        externalize={passo.uid: f"{pasta}/{nomes[passo.uid]}" for passo in raiz},
+        externalize={
+            passo.uid: f"{PASTA_DE_SUBTASKS}/{nomes[passo.uid]}" for passo in raiz
+        },
     )
 
     secoes = [

@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Projeto | `aa-diagram-export` |
-| Versão desta spec | 0.7 (MVP completo) |
-| Data | 2026-11-09 |
+| Versão desta spec | 0.8 (MVP completo) |
+| Data | 2026-11-10 |
 | Status | Pipeline completo, validado contra um export real. O formato do A360 está documentado na §11. |
 
 ---
@@ -36,25 +36,38 @@ Arquivos que não sejam bots são ignorados em silêncio, mas contados no relat�
 
 ## 4. Saída
 
-Um diretório de saída com:
+Cada bot vira uma pasta direto no diretório de saída:
 
 ```
 <out>/
-  index.md                  grafo de chamadas, inventário e pendências
-  bots/
-    Financeiro/
-      ConciliacaoDiaria.md  um arquivo por bot
-      ConciliacaoDiaria/    os passos detalhados, quando o bot é grande (§8.2)
+  index.md                      grafo de chamadas, inventário e pendências
+  P001-ExtraiFaturas/
+    README.md                   panorama, variáveis e chamadas
+    Subtasks/                   os passos detalhados, quando o bot é grande (§8.2)
+      01-obter-dados-exportados-python-para-inserir.md
+      02-faz-loop-em-cada-fatura-na-pasta.md
+  P001_RevisaFilaProcessamento/
+    README.md
 ```
 
-Cada `bots/**/<bot>.md` traz:
+**A saída não espelha a árvore de pastas do export.** Espelhar dava cinco níveis para chegar a um arquivo; achatar encurta o caminho e põe o robô à vista na raiz. O que se perde é a unicidade que o caminho completo garantia de graça, e isso é tratado em `build_naming`: na colisão de nome, o segundo bot leva a pasta-pai junto (`P001-Ecobot-ObterDados`); persistindo, um sufixo numérico. O caminho completo de cada bot continua no `index.md` e no cabeçalho da página dele, então a informação de organização não se perde, só deixa de estruturar a árvore.
+
+O arquivo do bot se chama `README.md` porque o GitHub o renderiza ao abrir a pasta: o panorama aparece só de navegar a árvore, sem clicar em arquivo nenhum.
+
+Todo bot ganha pasta, tenha um ou cinco diagramas. O caminho de um bot não muda no dia em que ele crescer e passar a ser quebrado.
+
+Cada `README.md` traz:
 
 1. Cabeçalho: nome, caminho no export, contagem de ações, profundidade de expansão aplicada.
 2. Diagrama do fluxo em bloco ` ```mermaid `.
-3. Tabela de variáveis (nome, tipo, entrada/saída).
-4. Lista de bots chamados e de pacotes usados.
+3. Tabela dos passos detalhados, com link e contagem de nós, quando houver.
+4. Tabela de variáveis (nome, tipo, entrada/saída).
+5. Tabela de Chamadas: os parâmetros trocados com cada bot chamado (§9.1).
+6. Lista de bots chamados e de pacotes usados.
 
-O `index.md` traz o grafo de chamadas (`flowchart LR`, um nó por bot, uma aresta por chamada), uma tabela-inventário de todos os bots e uma seção de pendências: bots referenciados e não encontrados, ciclos detectados, arquivos ignorados.
+Cada arquivo em `Subtasks/` traz o diagrama do passo, link de volta ao `README.md` do bot e links para o passo anterior e o seguinte.
+
+O `index.md` traz o grafo de chamadas (`flowchart LR`), uma tabela-inventário dos bots documentados e uma seção de pendências: bots referenciados e não encontrados, comandos sem rótulo no dicionário, bots com expansão reduzida e arquivos ignorados.
 
 ## 5. Decisões de desenho fechadas
 
@@ -73,7 +86,8 @@ O `index.md` traz o grafo de chamadas (`flowchart LR`, um nó por bot, uma arest
 | Execução | Linha de comando; `.bat` clicável e CI ficam fora do MVP |
 | Dependências | Execução: nenhuma por ora, cada nova com razão registrada. Desenvolvimento: `pytest`, `ruff` |
 | Bibliotecas | Padrões em `dicionario.toml`; o bot é mencionado no fluxo de quem chama, sem página própria (§8.3) |
-| Orçamento de nós | Diagrama acima de 30 nós quebra em arquivos de passo numa pasta irmã (§8.2) |
+| Orçamento de nós | Diagrama acima de 30 nós quebra em arquivos dentro de `Subtasks/` (§8.2) |
+| Layout da saída | Uma pasta por bot na raiz, sem espelhar a árvore do export (§4) |
 | Orçamento de arestas | Diagrama acima de 480 arestas é refeito com um nível a menos de expansão (§8.1) |
 
 ## 6. Arquitetura
@@ -263,12 +277,12 @@ Arestas são o limite do Mermaid. Legibilidade é outro, bem mais baixo, e não 
 
 Disso vem uma consequência contraintuitiva que vale registrar, porque é a primeira ideia que ocorre: **aumentar a fonte não resolve**. Letra maior deixa cada caixa maior, o desenho fica mais largo e o navegador reduz mais. Dá na mesma.
 
-O que funciona é reduzir o conteúdo por desenho. Passando de `orcamento_de_nos` (padrão 30), os `Step` maiores saem do diagrama principal e viram **arquivos próprios**, numa pasta irmã com o nome do bot:
+O que funciona é reduzir o conteúdo por desenho. Passando de `orcamento_de_nos` (padrão 30), os `Step` maiores saem do diagrama principal e viram **arquivos próprios**, numa subpasta `Subtasks/` dentro da pasta do bot:
 
 ```
-bots/Processos/Sustentabilidade/P001-Ecobot/
-  P001-ExtraiFaturas.md                        panorama e metadados
-  P001-ExtraiFaturas/
+P001-ExtraiFaturas/
+  README.md                 panorama e metadados
+  Subtasks/
     01-obter-dados-exportados-python-para-inserir.md
     02-faz-loop-em-cada-fatura-na-pasta.md
 ```

@@ -1,6 +1,6 @@
 # Obter Dados Exportados Python Para Inserir na Fila Processamento
 
-Passo de [P001-ExtraiFaturas](../P001-ExtraiFaturas.md).
+Passo de [P001-ExtraiFaturas](../README.md).
 
 ```mermaid
 flowchart TD

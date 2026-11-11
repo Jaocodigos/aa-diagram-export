@@ -53,7 +53,7 @@ def test_o_principal_referencia_o_arquivo_da_secao():
     # O click é bônus: o GitHub usa securityLevel strict e o ignora. A
     # navegação confiável são os links Markdown que a página escreve.
     assert f'click ' in mermaid
-    assert f"{render.sections_dirname(bot)}/01-passo-grande.md" in mermaid
+    assert f"{render.PASTA_DE_SUBTASKS}/01-passo-grande.md" in mermaid
 
 
 def test_passo_pequeno_demais_nao_vira_secao():
@@ -152,7 +152,7 @@ def test_pagina_do_bot_lista_os_arquivos():
         depth_used=3,
     )
     assert "## Passos detalhados" in pagina
-    assert f"]({render.sections_dirname(bot)}/01-passo-grande.md)" in pagina
+    assert f"]({render.PASTA_DE_SUBTASKS}/01-passo-grande.md)" in pagina
     assert pagina.count("```mermaid") == 1, "a seção não fica mais no mesmo arquivo"
 
 
@@ -175,7 +175,7 @@ def test_pagina_da_secao_tem_volta_e_vizinhos():
         following=resultado.sections[2],
     )
     assert pagina.startswith("# Passo dois")
-    assert "](../Grande.md)" in pagina
+    assert "](../README.md)" in pagina
     assert "](01-passo-um.md)" in pagina
     assert "](03-passo-tres.md)" in pagina
 
@@ -187,8 +187,31 @@ def test_primeira_secao_nao_tem_anterior():
     assert "←" not in pagina.split("```")[-1]
 
 
-def test_caminho_do_arquivo_da_secao():
+def test_caminho_dos_arquivos_na_saida():
+    """Cada bot é uma pasta na raiz da saída, sem espelhar a árvore do export."""
     bot = _bot_com_passo_grande()
     resultado = layout.split_bot(bot, Dictionary(), budget=8)
-    caminho = render.section_relpath(bot, resultado.sections[0])
-    assert caminho == "bots/Processos/Grande/01-passo-grande.md"
+    nomes = render.build_naming([bot])
+
+    assert nomes.page(bot) == "Grande/README.md"
+    assert (
+        nomes.section(bot, resultado.sections[0])
+        == "Grande/Subtasks/01-passo-grande.md"
+    )
+
+
+def test_nome_de_pasta_resolve_colisao():
+    """Achatar a árvore perde a unicidade que o caminho completo dava."""
+    a = Bot(path="Processos/Alfa/ObterDados", name="ObterDados")
+    b = Bot(path="Processos/Beta/ObterDados", name="ObterDados")
+    nomes = render.build_naming([a, b])
+    assert nomes.dirname(a) == "ObterDados"
+    assert nomes.dirname(b) == "Beta-ObterDados"
+
+
+def test_colisao_persistente_ganha_sufixo():
+    a = Bot(path="X/Beta/ObterDados", name="ObterDados")
+    b = Bot(path="Y/Beta/ObterDados", name="ObterDados")
+    c = Bot(path="Z/Beta/ObterDados", name="ObterDados")
+    nomes = render.build_naming([a, b, c])
+    assert len({nomes.dirname(x) for x in (a, b, c)}) == 3

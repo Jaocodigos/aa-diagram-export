@@ -39,6 +39,28 @@ Atenção: `python -m` recebe **nome de módulo**, não caminho de pasta.
 `python -m .\src\aa_diagram_export\` falha com "Relative module names not
 supported".
 
+## O que sai
+
+Cada robô vira uma pasta direto na saída, com o panorama no `README.md` — que
+o GitHub mostra sozinho ao abrir a pasta — e os passos detalhados em
+`Subtasks/`:
+
+```
+docs/diagramas/
+  index.md                      grafo de chamadas, inventário e pendências
+  P001-ExtraiFaturas/
+    README.md                   panorama, variáveis e chamadas
+    Subtasks/
+      01-obter-dados-exportados-python-para-inserir.md
+      02-faz-loop-em-cada-fatura-na-pasta.md
+  P001_RevisaFilaProcessamento/
+    README.md
+```
+
+A saída **não espelha a árvore de pastas do export**: o caminho completo de
+cada bot fica no `index.md` e no cabeçalho da página dele. Quando dois bots
+têm o mesmo nome, o segundo leva a pasta-pai no nome da pasta.
+
 Opções:
 
 | Flag | O que faz |
@@ -87,17 +109,7 @@ caber, e escreve na página que reduziu.
 Mermaid: o navegador encolhe o desenho para caber na largura da página, então
 diagrama grande não vira diagrama grande, vira diagrama ilegível. Passando do
 `orcamento_de_nos`, os `Step` maiores saem do desenho principal e viram
-arquivos próprios, numa pasta irmã com o nome do bot:
-
-```
-bots/Processos/Sustentabilidade/P001-Ecobot/
-  P001-ExtraiFaturas.md                        panorama e metadados
-  P001-ExtraiFaturas/
-    01-obter-dados-exportados-python-para-inserir.md
-    02-faz-loop-em-cada-fatura-na-pasta.md
-    03-obter-dados-exportados-python-para-atualizar.md
-    04-obtem-item-fila-processamento-e-intera-sobre-o.md
-```
+arquivos próprios, numa subpasta `Subtasks/`.
 
 A numeração segue a ordem de leitura do fluxo, não a ordem em que os passos
 foram extraídos. A página do bot lista os arquivos numa tabela, e cada arquivo

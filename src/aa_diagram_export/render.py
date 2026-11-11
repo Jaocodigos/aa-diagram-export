@@ -489,23 +489,68 @@ def call_graph(
     return "\n".join(linhas)
 
 
-def page_relpath(bot: Bot) -> str:
-    """Caminho do .md do bot dentro do diretório de saída, espelhando o export."""
-    partes = [p for p in PurePosixPath(bot.path.replace("\\", "/")).parts if p not in (".", "/")]
-    seguro = [_slug(p) for p in partes] or [_slug(bot.name)]
-    return str(PurePosixPath("bots", *seguro)) + ".md"
+#: Cada bot é uma pasta na raiz da saída, com a página dentro e os passos
+#: numa subpasta. O GitHub renderiza o README ao abrir a pasta, então o
+#: panorama aparece só de navegar a árvore.
+ARQUIVO_DO_BOT = "README.md"
+PASTA_DE_SUBTASKS = "Subtasks"
 
 
-def sections_dirname(bot: Bot) -> str:
-    """Nome da pasta irmã que guarda as seções deste bot."""
-    return PurePosixPath(page_relpath(bot)).stem
+@dataclass(frozen=True)
+class Naming:
+    """Onde cada arquivo de cada bot mora dentro do diretório de saída."""
+
+    dirs: dict[str, str]
+
+    def dirname(self, bot: Bot) -> str:
+        return self.dirs[bot.path]
+
+    def page(self, bot: Bot) -> str:
+        return f"{self.dirname(bot)}/{ARQUIVO_DO_BOT}"
+
+    def section(self, bot: Bot, section: Section) -> str:
+        return f"{self.dirname(bot)}/{PASTA_DE_SUBTASKS}/{section.filename}"
 
 
-def section_relpath(bot: Bot, section: Section) -> str:
-    """Caminho do arquivo de uma seção dentro do diretório de saída."""
-    return str(
-        PurePosixPath(page_relpath(bot)).with_suffix("") / section.filename
-    )
+def build_naming(bots: list[Bot]) -> Naming:
+    """Decide o nome da pasta de cada bot, resolvendo colisões.
+
+    A saída não espelha mais a árvore do export: cada bot é uma pasta na
+    raiz, o que encurta muito o caminho. O preço é perder a unicidade que o
+    caminho completo garantia de graça — dois `ObterDados` em pastas
+    diferentes virariam a mesma pasta. Na colisão, o segundo leva a
+    pasta-pai no nome; persistindo, um sufixo numérico. O caminho completo
+    de cada bot continua no `index.md` e no cabeçalho da página dele.
+    """
+    usados: set[str] = set()
+    resultado: dict[str, str] = {}
+
+    for bot in sorted(bots, key=lambda b: b.path):
+        candidatos = _candidatos_de_pasta(bot)
+        escolhido = next((c for c in candidatos if c not in usados), None)
+        if escolhido is None:
+            base = candidatos[-1]
+            sufixo = 2
+            while f"{base}-{sufixo}" in usados:
+                sufixo += 1
+            escolhido = f"{base}-{sufixo}"
+        usados.add(escolhido)
+        resultado[bot.path] = escolhido
+
+    return Naming(dirs=resultado)
+
+
+def _candidatos_de_pasta(bot: Bot) -> list[str]:
+    partes = [
+        p
+        for p in PurePosixPath(bot.path.replace("\\", "/")).parts
+        if p not in (".", "/")
+    ]
+    nome = _slug(partes[-1]) if partes else _slug(bot.name)
+    candidatos = [nome]
+    if len(partes) >= 2:
+        candidatos.append(f"{_slug(partes[-2])}-{nome}")
+    return candidatos
 
 
 def section_page(
@@ -516,11 +561,10 @@ def section_page(
     following: Section | None = None,
 ) -> str:
     """Página de uma seção: o diagrama, mais a navegação de volta e entre pares."""
-    arquivo_do_bot = PurePosixPath(page_relpath(bot)).name
     linhas = [
         f"# {section.title}",
         "",
-        f"Passo de [{bot.name}](../{arquivo_do_bot}).",
+        f"Passo de [{bot.name}](../{ARQUIVO_DO_BOT}).",
         "",
         "```mermaid",
         section.diagram.mermaid,
@@ -590,11 +634,10 @@ def bot_page(
     ]
 
     if sections:
-        pasta = sections_dirname(bot)
         linhas += ["## Passos detalhados", "", "| | Passo | Nós |", "|---|---|---|"]
         for posicao, secao in enumerate(sections, 1):
             linhas.append(
-                f"| {posicao} | [{secao.title}]({pasta}/{secao.filename}) "
+                f"| {posicao} | [{secao.title}]({PASTA_DE_SUBTASKS}/{secao.filename}) "
                 f"| {secao.diagram.node_count} |"
             )
         linhas.append("")
@@ -700,6 +743,7 @@ def index_page(
     include_call_graph: bool = True,
     depth_reduced: dict[str, tuple[int, int]] | None = None,
     libraries: set[str] | None = None,
+    naming: Naming | None = None,
 ) -> str:
     """Página de entrada: grafo de chamadas, inventário e pendências (§4)."""
     unresolved = unresolved or {}
@@ -739,10 +783,11 @@ def index_page(
         "| Bot | Ações | Chama | Diagrama |",
         "|---|---|---|---|",
     ]
+    nomes = naming or build_naming(bots)
     for bot in sorted(bots, key=lambda b: b.path):
         linhas.append(
             f"| `{bot.path}` | {action_count(bot)} | {len(called_bots(bot))} "
-            f"| [abrir]({page_relpath(bot)}) |"
+            f"| [abrir]({nomes.page(bot)}) |"
         )
     linhas.append("")
 

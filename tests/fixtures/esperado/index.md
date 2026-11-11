@@ -22,8 +22,8 @@ flowchart LR
 
 | Bot | Ações | Chama | Diagrama |
 |---|---|---|---|
-| `Bots/Comum/EnviarRelatorio` | 1 | 1 | [abrir](bots/Bots/Comum/EnviarRelatorio.md) |
-| `Bots/Financeiro/ConciliacaoDiaria` | 13 | 3 | [abrir](bots/Bots/Financeiro/ConciliacaoDiaria.md) |
+| `Bots/Comum/EnviarRelatorio` | 1 | 1 | [abrir](EnviarRelatorio/README.md) |
+| `Bots/Financeiro/ConciliacaoDiaria` | 13 | 3 | [abrir](ConciliacaoDiaria/README.md) |
 
 ## Pendências
 
